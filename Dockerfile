@@ -16,11 +16,6 @@ FROM alpine:latest
 # Добавляем tzdata (чтобы работали time.LoadLocation)
 RUN apk add --no-cache libc6-compat ca-certificates tzdata
 
-# Устанавливаем часовой пояс (по желанию)
-ENV TZ=Europe/Moscow
-
-WORKDIR /app
-
 COPY --from=builder /erp-app /erp-app
 COPY .env .env
 
