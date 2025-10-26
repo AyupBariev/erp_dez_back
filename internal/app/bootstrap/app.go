@@ -94,7 +94,7 @@ func ensureAdminExists(repo *repositories.UserRepository, roleRepo *repositories
 		password = generateStrongPassword(16)
 		log.Printf("WARNING: Generated admin password: %s", password)
 	} else if !isPasswordStrong(password) {
-		return fmt.Errorf("admin password does not meet security requirements")
+		return fmt.Errorf("admin password does not meet security requirements: %s", password)
 	}
 
 	// Проверка существования

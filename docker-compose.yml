@@ -54,17 +54,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  frontend:
-    build:
-      context: ../front
-      dockerfile: Dockerfile
-    container_name: erp-frontend
-    restart: unless-stopped
-    ports:
-      - "4200:3000"
-    depends_on:
-      - erp-app
-
   mysql:
     image: mysql:8.0
     environment:
