@@ -1,0 +1,10 @@
+#!/bin/bash
+# Локальный алиас для миграций
+
+# Загружаем .env вручную, если есть
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
+# Запускаем go-команду
+go run cmd/migrate/main.go "$@"

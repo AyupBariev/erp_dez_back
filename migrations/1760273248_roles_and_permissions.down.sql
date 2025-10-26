@@ -1,0 +1,8 @@
+-- +migrate Down
+-- Так как схема ролей и доступов была вынесена из кодовой базы в таблицы, rollback не имеет смысла
+-- ALTER TABLE users ADD COLUMN role ENUM('admin', 'logist') NOT NULL DEFAULT 'logist';
+-- ALTER TABLE users DROP FOREIGN KEY fk_users_roles;
+-- ALTER TABLE users DROP COLUMN role_id;
+-- DROP TABLE role_permissions;
+-- DROP TABLE permissions;
+-- DROP TABLE roles;

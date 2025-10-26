@@ -1,0 +1,3 @@
+-- +migrate Down
+-- Невозможно безопасно вернуть engineer_id в NOT NULL без потери данных
+-- ALTER TABLE orders MODIFY COLUMN engineer_id INT NOT NULL;
