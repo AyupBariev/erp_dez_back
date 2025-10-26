@@ -86,6 +86,19 @@ services:
 
     restart: unless-stopped
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    environment:
+      - DB_HOST=mysql
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_DATABASE}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 volumes:
    mysql_data:
       external: true
