@@ -10,10 +10,7 @@ RUN go mod download
 COPY . .
 
 # Сборка с отладочной информацией
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-w -s" \
-    -v \  # ← verbose mode
-    -o /erp-app ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -v -o /erp-app ./cmd/main.go
 
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates tzdata
