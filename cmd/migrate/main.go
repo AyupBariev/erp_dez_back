@@ -44,10 +44,17 @@ func main() {
 	dbUser := os.Getenv("DB_USERNAME")
 	dbPass := os.Getenv("DB_PASSWORD")
 	dbName := os.Getenv("DB_DATABASE")
-	dbHost := "localhost"
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "mysql" // значение по умолчанию для docker-compose
+	}
+	dbPort := os.Getenv("DB_PORT")
+	if dbPort == "" {
+		dbPort = "3306" // порт внутри docker сети
+	}
 
 	// Формируем URL для mysql
-	dsn := fmt.Sprintf("mysql://%s:%s@tcp(%s:3306)/%s", dbUser, dbPass, dbHost, dbName)
+	dsn := fmt.Sprintf("mysql://%s:%s@tcp(%s:%s)/%s", dbUser, dbPass, dbHost, dbPort, dbName)
 
 	// Путь до миграций
 	m, err := migrate.New(
