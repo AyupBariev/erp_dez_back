@@ -34,7 +34,7 @@ func (r *OrderRepository) queryOrders(opts QueryOptions) ([]*models.Order, error
 	if len(opts.Fields) == 0 {
 		opts.Fields = []string{
 			"id", "erp_number", "engineer_id", "status", "client_name",
-			"phones", "address", "problem", "scheduled_at",
+			"phones", "address", "note", "scheduled_at",
 		}
 	}
 
@@ -120,6 +120,14 @@ func (r *OrderRepository) queryOrders(opts QueryOptions) ([]*models.Order, error
 		}
 	}
 
+	if err := r.attachProblems(orders); err != nil {
+		return nil, err
+	}
+
+	if err := r.attachAggregators(orders); err != nil {
+		return nil, err
+	}
+
 	return orders, nil
 }
 
@@ -176,6 +184,56 @@ func (r *OrderRepository) attachEngineers(orders []*models.Order, ids map[int64]
 
 	return nil
 }
+func (r *OrderRepository) attachProblems(orders []*models.Order) error {
+	rows, err := r.db.Query(`SELECT id, name FROM problems`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	problems := map[int64]*models.BaseDictionary{}
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return err
+		}
+		problems[id] = &models.BaseDictionary{ID: int(id), Name: name}
+	}
+
+	for _, o := range orders {
+		if o.ProblemID.Valid {
+			o.Problem = problems[o.ProblemID.Int64]
+		}
+	}
+	return nil
+}
+
+func (r *OrderRepository) attachAggregators(orders []*models.Order) error {
+	rows, err := r.db.Query(`SELECT id, name FROM aggregators`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	aggs := map[int64]*models.BaseDictionary{}
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return err
+		}
+		aggs[id] = &models.BaseDictionary{ID: int(id), Name: name}
+	}
+
+	for _, o := range orders {
+		if o.AggregatorID != 0 { // теперь просто проверяем на 0
+			o.Aggregator = aggs[o.AggregatorID]
+		}
+	}
+
+	return nil
+}
 
 func (r *OrderRepository) GetOrders(date *string) ([]*models.Order, error) {
 	opts := QueryOptions{
@@ -184,9 +242,17 @@ func (r *OrderRepository) GetOrders(date *string) ([]*models.Order, error) {
 			"o.erp_number",
 			"o.client_name",
 			"o.address",
+			"o.our_percent",
+			"o.price",
+			"o.address",
+			"o.work_volume",
 			"o.scheduled_at",
 			"o.status",
 			"o.engineer_id",
+			"o.admin_id",
+			"o.phones",
+			"o.problem_id",
+			"o.aggregator_id",
 		},
 	}
 
@@ -199,10 +265,10 @@ func (r *OrderRepository) GetOrders(date *string) ([]*models.Order, error) {
 }
 
 // Получить максимальный ERP номер
-func (r *OrderRepository) GetMaxERPNumber() (int64, error) {
-	var max int64
-	err := r.db.QueryRow("SELECT IFNULL(MAX(erp_number), 100000) FROM orders").Scan(&max)
-	return max, err
+func (r *OrderRepository) GetNextERPNumber() (int64, error) {
+	var nextNumber int64
+	err := r.db.QueryRow("SELECT COALESCE(MAX(erp_number), 0) + 1 FROM orders FOR UPDATE").Scan(&nextNumber)
+	return nextNumber, err
 }
 
 // Создание нового заказа
@@ -210,14 +276,15 @@ func (r *OrderRepository) Create(order *models.Order) error {
 	phonesJSON, _ := json.Marshal(order.Phones)
 
 	res, err := r.db.Exec(`
-        INSERT INTO orders (
-			erp_number, source_id, our_percent, client_name, phones,
-			address, title, problem, scheduled_at, status, engineer_id, admin_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		order.ERPNumber, order.SourceID, order.OurPercent, order.ClientName,
-		phonesJSON, order.Address, order.Title, order.Problem,
-		order.ScheduledAt, order.Status, order.EngineerID, order.AdminID,
+    INSERT INTO orders (
+        erp_number, aggregator_id, price, our_percent, client_name, phones,
+        address, work_volume, note, scheduled_at, status, engineer_id, admin_id, problem_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		order.ERPNumber, order.AggregatorID, order.Price, order.OurPercent, order.ClientName,
+		phonesJSON, order.Address, order.WorkVolume, order.Note,
+		order.ScheduledAt, order.Status, order.EngineerID, order.AdminID, order.ProblemID,
 	)
+
 	if err != nil {
 		return err
 	}
@@ -237,7 +304,8 @@ func (r *OrderRepository) GetOrderByErpNumber(erpNumber int64) (*models.Order, e
 	opts := QueryOptions{
 		Fields: []string{
 			"id", "erp_number", "engineer_id", "status", "client_name",
-			"phones", "address", "problem", "scheduled_at",
+			"phones", "address", "note", "scheduled_at",
+			"problem_id", "aggregator_id", "admin_id",
 		},
 		Where: "erp_number = ?",
 		Args:  []interface{}{erpNumber},
@@ -259,9 +327,10 @@ func (r *OrderRepository) GetTodayOrders(chatID int64) ([]models.Order, error) {
 	endOfDay := startOfDay.Add(24 * time.Hour)
 
 	opts := QueryOptions{
-		Fields: []string{"id", "erp_number", "problem", "status", "scheduled_at"},
-		Where:  "engineer_id IN (SELECT id FROM engineers WHERE telegram_id = ?) AND scheduled_at >= ? AND scheduled_at < ?",
-		Args:   []interface{}{chatID, startOfDay, endOfDay},
+		Fields: []string{"id", "erp_number", "note", "status", "scheduled_at",
+			"problem_id", "aggregator_id", "admin_id"},
+		Where: "engineer_id IN (SELECT id FROM engineers WHERE telegram_id = ?) AND scheduled_at >= ? AND scheduled_at < ? AND status = 'working'",
+		Args:  []interface{}{chatID, startOfDay, endOfDay},
 	}
 
 	orders, err := r.queryOrders(opts)
@@ -279,9 +348,10 @@ func (r *OrderRepository) GetTodayOrders(chatID int64) ([]models.Order, error) {
 // Повторные заказы инженера
 func (r *OrderRepository) GetRepeatOrders(chatID int64) ([]models.Order, error) {
 	opts := QueryOptions{
-		Fields: []string{"id", "erp_number", "problem", "status", "scheduled_at"},
-		Where:  "engineer_id IN (SELECT id FROM engineers WHERE telegram_id = ?) AND is_repeat = TRUE AND status = 'confirmed'",
-		Args:   []interface{}{chatID},
+		Fields: []string{"id", "erp_number", "note", "status", "scheduled_at",
+			"problem_id", "aggregator_id", "admin_id"},
+		Where: "engineer_id IN (SELECT id FROM engineers WHERE telegram_id = ?) AND is_repeat = TRUE AND status = 'working'",
+		Args:  []interface{}{chatID},
 	}
 
 	orders, err := r.queryOrders(opts)
@@ -299,9 +369,10 @@ func (r *OrderRepository) GetRepeatOrders(chatID int64) ([]models.Order, error) 
 // Наличные заказы инженера
 func (r *OrderRepository) GetCashOrders(chatID int64) ([]models.Order, error) {
 	opts := QueryOptions{
-		Fields: []string{"id", "erp_number", "problem", "status", "scheduled_at"},
-		Where:  "engineer_id IN (SELECT id FROM engineers WHERE telegram_id = ?) AND payment_type = 'cash'",
-		Args:   []interface{}{chatID},
+		Fields: []string{"id", "erp_number", "note", "status", "scheduled_at",
+			"problem_id", "aggregator_id", "admin_id"},
+		Where: "engineer_id IN (SELECT id FROM engineers WHERE telegram_id = ?) AND payment_type = 'cash'",
+		Args:  []interface{}{chatID},
 	}
 
 	orders, err := r.queryOrders(opts)
@@ -326,16 +397,25 @@ func (r *OrderRepository) Update(order *models.Order) error {
 	return err
 }
 
+func (r *OrderRepository) UpdateStatus(erpNumber int64, status string) error {
+	query := `
+		UPDATE orders 
+		SET status = ?, updated_at = NOW()
+		WHERE erp_number = ?`
+	_, err := r.db.Exec(query, status, erpNumber)
+	return err
+}
+
 // Полное обновление заказа
 func (r *OrderRepository) UpdateFull(order *models.Order) error {
 	query := `
 		UPDATE orders 
-		SET source_id = ?, our_percent = ?, client_name = ?, phones = ?, 
-		    address = ?, title = ?, problem = ?, scheduled_at = ?, status = ?, engineer_id = ?, updated_at = NOW()
+		SET aggregator_id = ?, our_percent = ?, client_name = ?, phones = ?, 
+		    address = ?, work_volume = ?, note = ?, scheduled_at = ?, status = ?, engineer_id = ?, updated_at = NOW()
 		WHERE id = ?`
 	_, err := r.db.Exec(query,
-		order.SourceID, order.OurPercent, order.ClientName, order.Phones,
-		order.Address, order.Title, order.Problem, order.ScheduledAt,
+		order.AggregatorID, order.OurPercent, order.ClientName, order.Phones,
+		order.Address, order.WorkVolume, order.Note, order.ScheduledAt,
 		order.Status, order.EngineerID, order.ID)
 	return err
 }

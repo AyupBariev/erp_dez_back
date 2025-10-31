@@ -12,14 +12,16 @@ type TelegramHandler struct {
 	bot             *tgbotapi.BotAPI
 	engineerService *services.EngineerService
 	orderService    *services.OrderService
+	reportService   *services.ReportService
 	keyboards       map[string]tgbotapi.InlineKeyboardMarkup
 }
 
-func NewTelegramHandler(bot *tgbotapi.BotAPI, engineerService *services.EngineerService, orderService *services.OrderService) *TelegramHandler {
+func NewTelegramHandler(bot *tgbotapi.BotAPI, engineerService *services.EngineerService, orderService *services.OrderService, reportService *services.ReportService) *TelegramHandler {
 	return &TelegramHandler{
 		bot:             bot,
 		engineerService: engineerService,
 		orderService:    orderService,
+		reportService:   reportService,
 		keyboards: map[string]tgbotapi.InlineKeyboardMarkup{
 			"init": tgbotapi.NewInlineKeyboardMarkup(
 				tgbotapi.NewInlineKeyboardRow(
@@ -132,5 +134,38 @@ func (h *TelegramHandler) showTodayOrders(chatID int64) {
 		return
 	}
 
-	h.sendOrderList(chatID, "Заказы на сегодня:", orders)
+	// Заголовок
+	msg := tgbotapi.NewMessage(chatID, "📅 *Заказы на сегодня:*")
+	msg.ParseMode = "Markdown"
+
+	var rows [][]tgbotapi.InlineKeyboardButton
+
+	for _, order := range orders {
+		// Формируем время (если указано)
+		timeStr := "Без времени"
+		if !order.ScheduledAt.IsZero() {
+			timeStr = order.ScheduledAt.Format("15:04")
+		}
+
+		// Формируем текст кнопки
+		btnText := fmt.Sprintf("%s. %s. %s (Открыть заказ)", timeStr, order.Problem.Name, order.Address)
+
+		// Создаём кнопку с callback data вида "order_view_100002"
+		btn := tgbotapi.NewInlineKeyboardButtonData(btnText, fmt.Sprintf("order_view_%d", order.ERPNumber))
+
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
+	}
+
+	// Добавим кнопку "Назад в меню"
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🏠 Вернуться в меню", "init"),
+	))
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
+
+	msg.ReplyMarkup = keyboard
+
+	if _, err := h.bot.Send(msg); err != nil {
+		log.Printf("send orders list error: %v", err)
+	}
 }

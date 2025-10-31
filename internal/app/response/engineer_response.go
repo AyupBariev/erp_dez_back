@@ -1,6 +1,8 @@
 package response
 
-import "erp/internal/app/models"
+import (
+	"erp/internal/app/models"
+)
 
 type EngineerResponse struct {
 	ID         int     `json:"id"`
@@ -9,7 +11,7 @@ type EngineerResponse struct {
 	Name       string  `json:"name"`
 	Username   string  `json:"username"`
 	Phone      *string `json:"phone,omitempty"`
-	TelegramID int64   `json:"telegram_id"`
+	TelegramID *int64  `json:"telegram_id"`
 	IsApproved bool    `json:"is_approved"`
 	IsWorking  bool    `json:"is_working"`
 }
@@ -32,7 +34,7 @@ func FromEngineerModel(e *models.Engineer) EngineerResponse {
 		Name:       name,
 		Username:   e.Username,
 		Phone:      phone,
-		TelegramID: e.TelegramID,
+		TelegramID: e.GetTelegramID(),
 		IsApproved: e.IsApproved,
 		IsWorking:  true, //e.IsWorking,
 	}

@@ -3,6 +3,7 @@ package repositories
 import (
 	"database/sql"
 	"erp/internal/app/models"
+	"errors"
 	"fmt"
 )
 
@@ -62,19 +63,59 @@ func (r *EngineerRepository) queryEngineers(where string, args ...interface{}) (
 	return engineers, rows.Err()
 }
 
+func (r *EngineerRepository) ListApproved() ([]*models.Engineer, error) {
+	return r.queryEngineers("e.is_approved = TRUE")
+}
+
 func (r *EngineerRepository) ListWorking(date string) ([]*models.Engineer, error) {
 	//todo вторая часть график си
 	//return r.queryEngineers("e.is_approved = TRUE AND s.is_working = TRUE", date)
 	return r.queryEngineers("1=1")
 }
 
+func (r *EngineerRepository) FindByUsername(username string) (*models.Engineer, error) {
+	engineer := &models.Engineer{}
+	err := r.db.QueryRow(`
+		SELECT id, username, first_name, second_name, phone, telegram_id, is_approved
+		FROM engineers WHERE username = ?
+	`, username).Scan(
+		&engineer.ID, &engineer.Username, &engineer.FirstName, &engineer.SecondName,
+		&engineer.Phone, &engineer.TelegramID, &engineer.IsApproved,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // важно!
+		}
+		return nil, err
+	}
+
+	return engineer, nil
+}
+
 func (r *EngineerRepository) FindByTelegramID(telegramID int64) (*models.Engineer, error) {
 	engineer := &models.Engineer{}
 	err := r.db.QueryRow(`
-	SELECT id, username, first_name, second_name, phone, telegram_id, is_approved
+		SELECT id, username, first_name, second_name, phone, telegram_id, is_approved
 		FROM engineers WHERE telegram_id = ?
-		`, telegramID).Scan(&engineer.ID, &engineer.Username, &engineer.FirstName, &engineer.SecondName, &engineer.Phone, &engineer.TelegramID, &engineer.IsApproved)
-	return engineer, err
+	`, telegramID).Scan(
+		&engineer.ID, &engineer.Username, &engineer.FirstName, &engineer.SecondName,
+		&engineer.Phone, &engineer.TelegramID, &engineer.IsApproved,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // важно!
+		}
+		return nil, err
+	}
+
+	return engineer, nil
+}
+
+func (r *EngineerRepository) UpdateTelegramID(id int64, telegramID int64) error {
+	_, err := r.db.Exec(`UPDATE engineers SET telegram_id = ? WHERE id = ?`, telegramID, id)
+	return err
 }
 
 func (r *EngineerRepository) FindByID(ID int64) (*models.Engineer, error) {

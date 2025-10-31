@@ -5,6 +5,7 @@ import (
 	"erp/internal/app/models"
 	"erp/internal/app/response"
 	"erp/internal/app/services"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -55,14 +56,19 @@ func (h *EngineerHandler) CreateEngineer(c *gin.Context) {
 		SecondName: sql.NullString{String: req.SecondName, Valid: req.SecondName != ""},
 		Username:   req.Username,
 		Phone:      sql.NullString{String: req.Phone, Valid: req.Phone != ""},
-		TelegramID: req.TelegramID,
+		TelegramID: sql.NullInt64{Int64: req.TelegramID, Valid: req.TelegramID != 0},
 		IsApproved: false, // по умолчанию
 	}
 
 	// Сохраняем через сервис
 	createdEngineer, err := h.engineerService.CreateEngineer(engineer)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, services.ErrEngineerAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Инженер с таким username или Telegram ID уже существует"})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось создать инженера"})
 		return
 	}
 
@@ -79,7 +85,7 @@ func (h *EngineerHandler) ListEngineers(c *gin.Context) {
 		return
 	}
 
-	engineers, err := h.engineerService.ListEngineers(dateParam)
+	engineers, err := h.engineerService.ListWorkingEngineers(dateParam)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

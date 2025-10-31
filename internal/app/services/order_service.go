@@ -18,12 +18,12 @@ func NewOrderService(orderRepo *repositories.OrderRepository, notification *Noti
 }
 
 func (s *OrderService) CreateOrder(order *models.Order) error {
-	maxERP, err := s.orderRepo.GetMaxERPNumber()
+	nextErpNumber, err := s.orderRepo.GetNextERPNumber()
 	if err != nil {
 		return err
 	}
 
-	order.ERPNumber = maxERP + 1
+	order.ERPNumber = nextErpNumber
 	order.Status = "new"
 
 	if order.EngineerID.Valid {
@@ -34,6 +34,12 @@ func (s *OrderService) CreateOrder(order *models.Order) error {
 }
 
 func (s *OrderService) GetOrders(date *string) ([]*models.Order, error) {
+	if date != nil {
+		_, err := time.Parse("2006-01-02", *date)
+		if err != nil {
+			return nil, err
+		}
+	}
 	orders, err := s.orderRepo.GetOrders(date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get orders: %w", err)
@@ -64,14 +70,14 @@ func (s *OrderService) UpdateEngineerAndStatus(order *models.Order) error {
 	return s.orderRepo.Update(order)
 }
 
-func (s *OrderService) MarkAsAcceptedByErpNumber(erpNumber int64) error {
-	order, err := s.orderRepo.GetOrderByErpNumber(erpNumber)
+func (s *OrderService) EngineerAcceptOrderByErpNumber(erpNumber int64) error {
+	order, err := s.GetOrderByErpNumber(erpNumber)
 	if err != nil {
 		return err
 	}
 
 	// Обновляем статус
-	order.Status = "confirmed"
+	order.Status = "working"
 	order.ConfirmedAt = sql.NullTime{
 		Time:  time.Now(),
 		Valid: true,
@@ -79,4 +85,12 @@ func (s *OrderService) MarkAsAcceptedByErpNumber(erpNumber int64) error {
 
 	// Сохраняем изменения
 	return s.orderRepo.Update(order)
+}
+
+func (s *OrderService) GetOrderByErpNumber(erpNumber int64) (*models.Order, error) {
+	order, err := s.orderRepo.GetOrderByErpNumber(erpNumber)
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
 }

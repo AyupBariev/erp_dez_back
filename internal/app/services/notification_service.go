@@ -2,10 +2,10 @@ package services
 
 import (
 	"erp/internal/app/models"
+	"erp/internal/pkg/logger"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/v9"
-	"log"
 )
 
 type NotificationService struct {
@@ -23,8 +23,8 @@ func NewNotificationService(telegram *TelegramService, call *CallService, redis 
 }
 
 func (s *NotificationService) NotifyEngineerNewOrder(order *models.Order, eng *models.Engineer) {
-	if eng == nil || eng.TelegramID == 0 {
-		log.Printf("Инженер не найден или не имеет Telegram ID")
+	if id := eng.GetTelegramID(); id == nil {
+		logger.LogInfo(fmt.Sprintf("Инженер %s не имеет Telegram ID — уведомление не отправлено", eng.Username))
 		return
 	}
 
@@ -41,7 +41,8 @@ func (s *NotificationService) NotifyEngineerNewOrder(order *models.Order, eng *m
 	)
 
 	// Отправляем сообщение через TelegramHandler
-	s.Telegram.SendMessageWithKeyboard(eng.TelegramID, text, buttons)
+	id := eng.GetTelegramID()
+	s.Telegram.SendMessageWithKeyboard(*id, text, buttons)
 
 	//telphin
 	//n.Call.ScheduleEngineerCall(engineerID, order)
@@ -55,7 +56,7 @@ func formatOrderMessage(order *models.Order) string {
 	if !order.ScheduledAt.IsZero() {
 		scheduled = order.ScheduledAt.Format("02.01.2006 15:04")
 	}
-
+	logger.LogInfo(order.Problem.Name)
 	return fmt.Sprintf(
 		"📦 *Новый заказ № %d*\n\n"+
 			"📅 Дата и время: %s\n"+
@@ -65,7 +66,7 @@ func formatOrderMessage(order *models.Order) string {
 			"Выберите действие ниже:",
 		order.ERPNumber,
 		scheduled,
-		order.Problem,
+		order.Problem.Name,
 		order.ClientName,
 		order.Address,
 	)

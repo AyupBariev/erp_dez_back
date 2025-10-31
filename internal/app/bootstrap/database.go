@@ -1,15 +1,15 @@
 package bootstrap
 
 import (
-	"database/sql"
 	"fmt"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"log"
 	"os"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
-func SetupDatabase() *sql.DB {
+func SetupDatabase() *gorm.DB {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?tls=skip-verify&allowNativePasswords=true&parseTime=true&loc=Europe%%2FMoscow",
 		os.Getenv("DB_USERNAME"),
 		os.Getenv("DB_PASSWORD"),
@@ -18,13 +18,20 @@ func SetupDatabase() *sql.DB {
 		os.Getenv("DB_DATABASE"),
 	)
 
-	db, err := sql.Open("mysql", dsn)
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info), // Настройте по необходимости
+	})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Проверка подключения
-	if err := db.Ping(); err != nil {
+	// Получаем *sql.DB для проверки подключения
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to get sql.DB:", err)
+	}
+
+	if err := sqlDB.Ping(); err != nil {
 		log.Fatal("Database ping failed:", err)
 	}
 

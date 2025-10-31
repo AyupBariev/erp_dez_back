@@ -32,8 +32,8 @@ func (h *AdminHandler) ApproveEngineer(c *gin.Context) {
 		return
 	}
 
-	if engineer.TelegramID != 0 {
-		h.telegramHandler.sendMessage(engineer.TelegramID, "✅ Бот активирован\nДля перехода в главное меню нажмите кнопку ниже", "init")
+	if telegramID := engineer.GetTelegramID(); telegramID != nil {
+		h.telegramHandler.sendMessage(*telegramID, "✅ Бот активирован\nДля перехода в главное меню нажмите кнопку ниже", "init")
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "approved"})

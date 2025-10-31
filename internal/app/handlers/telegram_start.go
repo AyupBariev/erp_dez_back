@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"erp/internal/app/models"
+	"erp/internal/utils"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
@@ -10,33 +11,60 @@ import (
 )
 
 func (h *TelegramHandler) handleStart(msg *tgbotapi.Message) {
-	// 1. Пробуем найти инженера
-	engineer, err := h.engineerService.GetEngineerByTelegramID(msg.From.ID)
+	telegramID := msg.From.ID
+	username := msg.From.UserName
+
+	// 1️⃣ Пытаемся найти инженера по Telegram ID
+	engineer, err := h.engineerService.GetEngineerByTelegramID(telegramID)
 	if err != nil {
 		h.sendMessage(msg.Chat.ID, "Ошибка при проверке пользователя. Попробуйте позже.")
 		return
 	}
 
-	// 2. Если нет — создаём нового с минимальными данными
-	if engineer == nil {
-		engineer = &models.Engineer{
-			Username:   msg.From.UserName,
-			TelegramID: msg.From.ID,
+	// 2️⃣ Если не найден по Telegram ID — пробуем по username
+	if engineer == nil && username != "" {
+		engineer, err = h.engineerService.GetEngineerByUsername(username)
+		if err != nil {
+			h.sendMessage(msg.Chat.ID, "Ошибка при проверке пользователя. Попробуйте позже.")
+			return
 		}
-		engineer, err = h.engineerService.CreateEngineer(engineer)
+
+		// Если нашли по username, но без Telegram ID — обновляем
+		if engineer != nil && engineer.GetTelegramID() == nil {
+			err = h.engineerService.UpdateTelegramID(int64(engineer.ID), telegramID)
+			if err != nil {
+				h.sendMessage(msg.Chat.ID, "Ошибка при привязке Telegram ID. Попробуйте позже.")
+				return
+			}
+			h.sendMessage(msg.Chat.ID, "Ваш Telegram успешно привязан к профилю инженера.")
+		}
+	}
+
+	// 3️⃣ Если не найден вообще — создаём нового
+	if engineer == nil {
+		newEngineer := &models.Engineer{
+			Username:   username,
+			TelegramID: utils.Int64ToNullInt64(telegramID),
+			IsApproved: false,
+		}
+
+		engineer, err = h.engineerService.CreateEngineer(newEngineer)
 		if err != nil {
 			h.sendMessage(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
 			return
 		}
-	}
 
-	// 3. Если инженер не подтверждён
-	if !engineer.IsApproved {
-		h.sendMessage(msg.Chat.ID, "Ваш запрос отправлен администратору. Ожидайте подтверждения.")
+		h.sendMessage(msg.Chat.ID, "Вы зарегистрированы. Ожидайте подтверждения администратора.")
 		return
 	}
 
-	// 4. Если подтверждён — показываем меню
+	// 4️⃣ Проверяем статус подтверждения
+	if !engineer.IsApproved {
+		h.sendMessage(msg.Chat.ID, "Ваш профиль ожидает подтверждения администратора.")
+		return
+	}
+
+	// 5️⃣ Если всё ок — показываем меню
 	h.showMainMenu(msg.Chat.ID)
 }
 
@@ -67,7 +95,7 @@ func (h *TelegramHandler) handleAcceptOrder(query *tgbotapi.CallbackQuery, accep
 	}
 
 	// ✅ Обновляем статус заказа
-	if err := h.orderService.MarkAsAcceptedByErpNumber(erpNumber); err != nil {
+	if err := h.orderService.EngineerAcceptOrderByErpNumber(erpNumber); err != nil {
 		log.Printf("Ошибка обновления заказа: %v", err)
 		h.sendMessage(query.Message.Chat.ID, "Ошибка при обновлении заказа 😕")
 		return
@@ -130,9 +158,9 @@ func (h *TelegramHandler) showOrderDetails(query *tgbotapi.CallbackQuery) {
 		address = "—"
 	}
 
-	problem := order.Problem
-	if problem == "" {
-		problem = "—"
+	note := order.Note
+	if note == "" {
+		note = "—"
 	}
 
 	date := ""
@@ -151,17 +179,22 @@ func (h *TelegramHandler) showOrderDetails(query *tgbotapi.CallbackQuery) {
 		order.ERPNumber,
 		clientName,
 		address,
-		problem,
+		note,
 		date,
 	)
 
+	reportLink, _ := h.reportService.GenerateReportLink(order.ERPNumber, int64(order.Engineer.ID))
+
 	// 🎛 Кнопки под заказом
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🏠 В меню", "init"),
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Повторить заказ", fmt.Sprintf("order_repeat_%d", order.ERPNumber)),
-		),
-	)
+	var buttons []tgbotapi.InlineKeyboardButton
+
+	buttons = append(buttons, tgbotapi.NewInlineKeyboardButtonData("🏠 В меню", "init"))
+
+	if reportLink != "" {
+		buttons = append(buttons, tgbotapi.NewInlineKeyboardButtonURL("📄 Отправить отчёт", reportLink))
+	}
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(buttons)
 
 	msg := tgbotapi.NewMessage(query.Message.Chat.ID, text)
 	msg.ParseMode = "Markdown"

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 	"log"
 	"os"
 	"strings"
@@ -28,8 +29,21 @@ type App struct {
 	Handlers    Handlers
 }
 
+type SQLDBAdapter struct {
+	db *gorm.DB
+}
+
+func NewSQLDBAdapter(gormDB *gorm.DB) *sql.DB {
+	sqlDB, _ := gormDB.DB()
+	return sqlDB
+}
+
 func NewApp() *App {
-	db := SetupDatabase()
+	gormDB := SetupDatabase()
+
+	// Для старых репозиториев
+	sqlDB := NewSQLDBAdapter(gormDB)
+
 	redisClient, err := infrastructure.NewRedisClient()
 	if err != nil {
 		log.Fatal("Failed to connect to Redis:", err)
@@ -44,12 +58,17 @@ func NewApp() *App {
 	}
 
 	// Репозитории
-	roleRepo := repositories.NewRoleRepository(db)
-	userRepo := repositories.NewUserRepository(db)
-	engineerRepo := repositories.NewEngineerRepository(db)
-	orderRepo := repositories.NewOrderRepository(db)
-	callRepo := repositories.NewCallRepository(db)
+	roleRepo := repositories.NewRoleRepository(sqlDB)
+	userRepo := repositories.NewUserRepository(sqlDB)
+	engineerRepo := repositories.NewEngineerRepository(sqlDB)
+	orderRepo := repositories.NewOrderRepository(sqlDB)
+	callRepo := repositories.NewCallRepository(sqlDB)
+	dictRepo := repositories.NewDictionaryRepository(sqlDB)
+	reportRepo := repositories.NewReportRepository(sqlDB)
 
+	motivationRepo := repositories.NewMotivationRepository(gormDB)
+	engineerTargetRepo := repositories.NewEngineerTargetRepository(gormDB)
+	engineerMotivationRepo := repositories.NewEngineerMotivationRepository(gormDB)
 	// Сервисы
 	blacklist := services.NewTokenBlacklist(redisClient)
 	authService := services.NewAuthService(userRepo, blacklist)
@@ -61,6 +80,12 @@ func NewApp() *App {
 	notificationService := services.NewNotificationService(telegramService, callService, redisClient)
 
 	orderService := services.NewOrderService(orderRepo, notificationService)
+	dictService := services.NewDictionaryService(dictRepo)
+	reportService := services.NewReportService(reportRepo, orderRepo, gormDB)
+
+	motivationService := services.NewMotivationService(motivationRepo)
+	egineerTargetService := services.NewEngineerTargetService(engineerTargetRepo)
+	engineerMotivationService := services.NewEngineerMotivationService(engineerMotivationRepo)
 
 	if err := ensureAdminExists(userRepo, roleRepo); err != nil {
 		log.Printf("WARNING: Admin creation failed: %v", err)
@@ -68,11 +93,11 @@ func NewApp() *App {
 
 	// Хендлеры
 
-	handlers := NewHandlers(bot, userService, engineerService, orderService, authService)
+	handlers := NewHandlers(bot, userService, engineerService, orderService, authService, dictService, reportService, motivationService, egineerTargetService, engineerMotivationService)
 	httpServer := SetupRouter(handlers)
 
 	return &App{
-		DB:          db,
+		DB:          sqlDB,
 		Redis:       redisClient,
 		TelegramBot: bot,
 		HTTPServer:  httpServer,

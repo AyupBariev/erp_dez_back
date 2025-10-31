@@ -20,15 +20,16 @@ services:
   erp-app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: ${DOCKERFILE:-Dockerfile}
     volumes:
       - .:/app
       - ./logs:/app/logs
     ports:
       - "8080:8080"
-    env_file: .env
+    env_file:
+      - .env
     environment:
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV}
       - DB_HOST=${DB_HOST}
       - DB_USERNAME=${DB_USERNAME}
       - DB_PASSWORD=${DB_PASSWORD}
@@ -79,6 +80,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.migrate
+    volumes:
+      - ./migrations:/app/migrations
     environment:
       - DB_HOST=mysql
       - DB_USERNAME=${DB_USERNAME}

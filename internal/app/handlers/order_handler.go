@@ -5,6 +5,7 @@ import (
 	"erp/internal/app/models"
 	"erp/internal/app/response"
 	"erp/internal/app/services"
+	"erp/internal/utils"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"time"
@@ -19,7 +20,7 @@ type OrderAssignResponse struct {
 	ERPNumber   int64  `json:"erp_number"`
 	ClientName  string `json:"client_name"`
 	Address     string `json:"address"`
-	Problem     string `json:"problem"`
+	Note        string `json:"note"`
 	ScheduledAt string `json:"scheduled_at"`
 	Status      string `json:"status"`
 	Engineer    string `json:"engineer"`
@@ -34,16 +35,18 @@ func NewOrderHandler(orderService *services.OrderService, engineerService *servi
 
 // CreateOrderRequest --- Запрос на создание инженера через HTTP ---
 type CreateOrderRequest struct {
-	SourceID    int      `json:"source_id"`
-	OurPercent  float64  `json:"our_percent"`
-	ClientName  string   `json:"client_name"`
-	Phones      []string `json:"phones"`
-	Address     string   `json:"address"`
-	Title       string   `json:"title"`
-	Problem     string   `json:"problem"`
-	ScheduledAt string   `json:"scheduled_at"` // ISO8601
-	EngineerID  *int     `json:"engineer_id,omitempty"`
-	AdminID     *int     `json:"admin_id,omitempty"`
+	AggregatorID int      `json:"aggregator_id"`
+	ProblemID    int      `json:"problem_id" binding:"required"`
+	Price        string   `json:"price"`
+	OurPercent   float64  `json:"our_percent"`
+	ClientName   string   `json:"client_name"`
+	Phones       []string `json:"phones"`
+	Address      string   `json:"address"`
+	WorkVolume   string   `json:"work_volume"`
+	Note         string   `json:"note"`
+	ScheduledAt  string   `json:"scheduled_at"` // ISO8601
+	EngineerID   *int     `json:"engineer_id,omitempty"`
+	AdminID      *int     `json:"admin_id,omitempty"`
 }
 
 func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
@@ -54,39 +57,44 @@ func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
 	}
 
 	var req CreateOrderRequest
-	// Парсим JSON
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scheduled_at format"})
-		return
-	}
-
+	// Добавь ProblemID
 	order := &models.Order{
-		SourceID:    req.SourceID,
-		OurPercent:  req.OurPercent,
-		ClientName:  req.ClientName,
-		AdminID:     userID.(int64),
-		Phones:      req.Phones,
-		Address:     req.Address,
-		Problem:     req.Problem,
-		ScheduledAt: scheduledAt,
+		AggregatorID: int64(req.AggregatorID),
+		ProblemID:    utils.Int64ToNullInt64(int64(req.ProblemID)),
+		Price:        req.Price,
+		OurPercent:   req.OurPercent,
+		ClientName:   req.ClientName,
+		AdminID:      userID.(int64),
+		Phones:       req.Phones,
+		Address:      req.Address,
+		WorkVolume:   req.WorkVolume,
+		Note:         req.Note,
 	}
 
-	// Если передан инженер → сохраняем в заказ сразу
+	// Обработка scheduled_at
+	if req.ScheduledAt != "" {
+		scheduledAt, err := time.Parse("2006-01-02T15:04", req.ScheduledAt)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scheduled_at format, use YYYY-MM-DDTHH:MM"})
+			return
+		}
+		order.ScheduledAt = scheduledAt
+	}
+
+	// Обработка engineer_id и статуса
 	if req.EngineerID != nil {
 		order.EngineerID = sql.NullInt64{Int64: int64(*req.EngineerID), Valid: true}
-		order.Status = "in_progress"
+		order.Status = "in_proccess"
 	} else {
 		order.EngineerID = sql.NullInt64{Valid: false}
 		order.Status = "new"
 	}
 
-	// Создаём заказ через сервис
 	if err := h.OrderService.CreateOrder(order); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -137,7 +145,7 @@ func (h *OrderHandler) AssignOrderHandler(c *gin.Context) {
 	}
 
 	// 🚫 Проверяем, что заказ уже принят кем-то
-	if order.EngineerID.Valid && order.Status == "confirmed" {
+	if order.EngineerID.Valid && order.Status == "working" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "order already confirmed by engineer"})
 		return
 	}
@@ -145,7 +153,7 @@ func (h *OrderHandler) AssignOrderHandler(c *gin.Context) {
 	// Обновляем инженера и статус
 	order.EngineerID = sql.NullInt64{Int64: int64(engineer.ID), Valid: true}
 	order.Engineer = engineer
-	order.Status = "in_progress"
+	order.Status = "in_proccess"
 
 	if err := h.OrderService.UpdateEngineerAndStatus(order); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
