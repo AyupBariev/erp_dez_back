@@ -267,7 +267,7 @@ func (r *OrderRepository) GetOrders(date *string) ([]*models.Order, error) {
 // Получить максимальный ERP номер
 func (r *OrderRepository) GetNextERPNumber() (int64, error) {
 	var nextNumber int64
-	err := r.db.QueryRow("SELECT COALESCE(MAX(erp_number), 0) + 1 FROM orders FOR UPDATE").Scan(&nextNumber)
+	err := r.db.QueryRow("SELECT COALESCE(MAX(erp_number), 100000) + 1 FROM orders FOR UPDATE").Scan(&nextNumber)
 	return nextNumber, err
 }
 
