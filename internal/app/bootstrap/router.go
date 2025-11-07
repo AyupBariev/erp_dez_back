@@ -8,7 +8,7 @@ import (
 func SetupRouter(h Handlers) *gin.Engine {
 	router := gin.Default()
 	router.Use(gin.Logger())
-	router.Use(middleware.RecoveryWithLog())
+	router.Use(middleware.ErrorLogger())
 	// Public routes
 
 	// Protected routes
@@ -33,12 +33,14 @@ func SetupRouter(h Handlers) *gin.Engine {
 		// Orders group
 		orders := prefixApi.Group("/orders")
 		{
-			orders.POST("/", h.Order.CreateOrderHandler)             // POST /api/orders
-			orders.POST("/assign-order", h.Order.AssignOrderHandler) // POST /api/orders
-			orders.GET("/", h.Order.ListOrders)                      // GET /api/orders
+			orders.POST("/", h.Order.CreateOrderHandler) // POST /api/orders
+			orders.GET("/", h.Order.ListOrders)          // GET /api/orders
 			//	orders.GET("/:id", h.Order.GetOrder)       // GET /api/orders/:id
-			//	orders.PUT("/:id", h.Order.UpdateOrder)    // PUT /api/orders/:id
-			//	orders.DELETE("/:id", h.Order.DeleteOrder) // DELETE /api/orders/:id
+			orders.PUT("/:erp_number", h.Order.UpdateOrder)    // PUT /api/orders/:id
+			orders.DELETE("/:erp_number", h.Order.DeleteOrder) // DELETE /api/orders/:id
+
+			orders.POST("/assign", h.Order.AssignOrderHandler)
+			orders.POST("/unassign", h.Order.UnAssignOrderHandler)
 		}
 		//
 		engineers := prefixApi.Group("/engineers")
@@ -49,6 +51,7 @@ func SetupRouter(h Handlers) *gin.Engine {
 			//engineers.PUT("/:id", h.Engineer.UpdateEngineer)    // PUT /api/engineers/:id
 			//engineers.DELETE("/:id", h.Engineer.DeleteEngineer) // DELETE /api/engineers/:id
 			engineers.POST("/accept-engineer", h.Admin.ApproveEngineer)
+			engineers.POST("/:engineer_id/working-status", h.Admin.ToggleWorkingStatusEngineer)
 		}
 
 		motivations := prefixApi.Group("/motivations")

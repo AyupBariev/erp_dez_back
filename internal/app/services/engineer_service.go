@@ -92,6 +92,21 @@ func (s *EngineerService) CreateEngineer(engineer *models.Engineer) (*models.Eng
 	return engineer, nil
 }
 
+func (s *EngineerService) UpdateEngineerWorkingStatus(engineerID int64, isWorking bool) (*models.Engineer, error) {
+	engineer, err := s.engineerRepo.FindByID(engineerID)
+	if err != nil {
+		return nil, fmt.Errorf("engineer not found: %w", err)
+	}
+
+	engineer.IsWorking = isWorking
+
+	engineer, err = s.engineerRepo.UpdateWorkingStatus(engineerID, isWorking)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update engineer working status: %w", err)
+	}
+
+	return engineer, nil
+}
 func (s *EngineerService) UpdateTelegramID(id int64, telegramID int64) error {
 	return s.engineerRepo.UpdateTelegramID(id, telegramID)
 }

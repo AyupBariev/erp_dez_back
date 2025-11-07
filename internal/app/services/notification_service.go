@@ -6,6 +6,7 @@ import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/v9"
+	"strings"
 )
 
 type NotificationService struct {
@@ -49,6 +50,31 @@ func (s *NotificationService) NotifyEngineerNewOrder(order *models.Order, eng *m
 
 }
 
+func (s *NotificationService) NotifyEngineerOrderUnassigned(order *models.Order, engineer *models.Engineer) {
+	if id := engineer.GetTelegramID(); id == nil {
+		logger.LogInfo(fmt.Sprintf("Инженер %s не имеет Telegram ID — уведомление не отправлено", engineer.Username))
+		return
+	}
+
+	message := fmt.Sprintf(
+		"❌ Заказ №%d снят с вас\n\n"+
+			"📋 Детали заказа:\n"+
+			"• Клиент: %s\n"+
+			"• Адрес: %s\n"+
+			"• Проблема: %s\n"+
+			"• Время: %s\n\n"+
+			"Заказ возвращен в пул нераспределенных заказов.",
+		order.ERPNumber,
+		order.ClientName,
+		order.Address,
+		order.Problem.Name,
+		order.ScheduledAt.Format("02.01.2006 15:04"),
+	)
+
+	id := engineer.GetTelegramID()
+	s.Telegram.sendMessage(*id, message)
+}
+
 // formatOrderMessage — формирует текст для Telegram-сообщения инженеру
 func formatOrderMessage(order *models.Order) string {
 	// форматируем дату, если нужно
@@ -56,18 +82,35 @@ func formatOrderMessage(order *models.Order) string {
 	if !order.ScheduledAt.IsZero() {
 		scheduled = order.ScheduledAt.Format("02.01.2006 15:04")
 	}
-	logger.LogInfo(order.Problem.Name)
+
+	phones := order.Phones
+	var phoneDisplay string
+	if len(phones) == 0 {
+		phoneDisplay = "—"
+	} else {
+		phoneDisplay = strings.Join(phones, ", ")
+	}
+
+	price := order.Price
+	if price == "" {
+		price = "—"
+	}
+
 	return fmt.Sprintf(
 		"📦 *Новый заказ № %d*\n\n"+
 			"📅 Дата и время: %s\n"+
-			"🔧 Проблема: %s\n"+
+			"🔧 Проблема: %s\n\n"+
+			"🏠 Адрес: %s\n"+
 			"👤 Клиент: *%s*\n"+
-			"🏠 Адрес: %s\n\n"+
+			"📞 Телефон: %s\n\n"+
+			"💰Сумма: %s\n\n"+
 			"Выберите действие ниже:",
 		order.ERPNumber,
 		scheduled,
 		order.Problem.Name,
-		order.ClientName,
 		order.Address,
+		order.ClientName,
+		phoneDisplay,
+		price,
 	)
 }

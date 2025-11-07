@@ -61,11 +61,11 @@ func NewApp() *App {
 	roleRepo := repositories.NewRoleRepository(sqlDB)
 	userRepo := repositories.NewUserRepository(sqlDB)
 	engineerRepo := repositories.NewEngineerRepository(sqlDB)
-	orderRepo := repositories.NewOrderRepository(sqlDB)
 	callRepo := repositories.NewCallRepository(sqlDB)
 	dictRepo := repositories.NewDictionaryRepository(sqlDB)
 	reportRepo := repositories.NewReportRepository(sqlDB)
 
+	orderRepo := repositories.NewOrderRepository(gormDB)
 	motivationRepo := repositories.NewMotivationRepository(gormDB)
 	engineerTargetRepo := repositories.NewEngineerTargetRepository(gormDB)
 	engineerMotivationRepo := repositories.NewEngineerMotivationRepository(gormDB)
@@ -79,7 +79,7 @@ func NewApp() *App {
 	callService := services.NewCallService(telphin, callRepo)
 	notificationService := services.NewNotificationService(telegramService, callService, redisClient)
 
-	orderService := services.NewOrderService(orderRepo, notificationService)
+	orderService := services.NewOrderService(orderRepo, notificationService, engineerService)
 	dictService := services.NewDictionaryService(dictRepo)
 	reportService := services.NewReportService(reportRepo, orderRepo, gormDB)
 

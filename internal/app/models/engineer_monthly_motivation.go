@@ -5,9 +5,8 @@ import "time"
 type EngineerMonthlyMotivation struct {
 	ID uint `gorm:"primaryKey"`
 
-	EngineerID   int64     `gorm:"not null;index"`
-	EngineerName string    `json:"engineer_name"`
-	Month        time.Time `gorm:"not null"` // первый день месяца
+	EngineerID int64     `gorm:"not null;index"`
+	Month      time.Time `gorm:"not null;type:date"` // первый день месяца
 
 	ReportsCount       int     `gorm:"not null;default:0"` // всего отчетов
 	PrimaryOrdersCount int     `gorm:"not null;default:0"` // количество первичных заказов

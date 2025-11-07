@@ -163,6 +163,20 @@ func (h *TelegramHandler) showOrderDetails(query *tgbotapi.CallbackQuery) {
 		note = "—"
 	}
 
+	phones := order.Phones
+	var phoneDisplay string
+
+	if len(phones) == 0 {
+		phoneDisplay = "—"
+	} else {
+		phoneDisplay = strings.Join(phones, ", ")
+	}
+
+	price := order.Price
+	if price == "" {
+		price = "—"
+	}
+
 	date := ""
 	if !order.ScheduledAt.IsZero() {
 		date = order.ScheduledAt.Format("02.01.2006 15:04")
@@ -175,12 +189,16 @@ func (h *TelegramHandler) showOrderDetails(query *tgbotapi.CallbackQuery) {
 			"👤 Клиент: %s\n"+
 			"🏠 Адрес: %s\n"+
 			"🔧 Проблема: %s\n"+
-			"📅 Дата и время: %s\n",
+			"📅 Дата и время: %s\n"+
+			"📞 Телефон: %s\n"+
+			"💰Сумма: %s\n",
 		order.ERPNumber,
 		clientName,
 		address,
 		note,
 		date,
+		phoneDisplay,
+		price,
 	)
 
 	reportLink, _ := h.reportService.GenerateReportLink(order.ERPNumber, int64(order.Engineer.ID))

@@ -36,7 +36,7 @@ func FromEngineerModel(e *models.Engineer) EngineerResponse {
 		Phone:      phone,
 		TelegramID: e.GetTelegramID(),
 		IsApproved: e.IsApproved,
-		IsWorking:  true, //e.IsWorking,
+		IsWorking:  e.IsWorking,
 	}
 }
 

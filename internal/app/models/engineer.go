@@ -10,6 +10,7 @@ type Engineer struct {
 	Phone      sql.NullString `db:"phone" json:"phone"`
 	TelegramID sql.NullInt64  `db:"telegram_id" json:"telegram_id"`
 	IsApproved bool           `db:"is_approved" json:"is_approved"`
+	IsWorking  bool           `db:"is_working" json:"is_working"`
 }
 
 func (e *Engineer) GetTelegramID() *int64 {

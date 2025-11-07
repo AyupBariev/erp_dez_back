@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strconv"
 )
 
 type AdminHandler struct {
@@ -37,4 +38,30 @@ func (h *AdminHandler) ApproveEngineer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "approved"})
+}
+
+func (h *AdminHandler) ToggleWorkingStatusEngineer(c *gin.Context) {
+	engineerIDStr := c.Param("engineer_id")
+	engineerID, err := strconv.ParseInt(engineerIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid engineer ID"})
+		return
+	}
+
+	var input struct {
+		IsWorking bool `json:"is_working"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error-94827366643": err.Error()})
+		return
+	}
+
+	engineer, err := h.engineerService.UpdateEngineerWorkingStatus(engineerID, input.IsWorking)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, engineer)
 }

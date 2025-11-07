@@ -9,14 +9,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RecoveryWithLog() gin.HandlerFunc {
+func ErrorLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
-			if err := recover(); err != nil {
-				logger.LogError("[PANIC]", fmt.Errorf("%v\nStack trace:\n%s", err, debug.Stack()))
+			if rec := recover(); rec != nil {
+				stack := string(debug.Stack())
+				logger.LogError("[PANIC]", fmt.Errorf("%v\n%s", rec, stack))
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 			}
 		}()
+
 		c.Next()
+
+		// Логируем все gin.Errors
+		for _, e := range c.Errors {
+			logger.LogError("[GIN ERROR]", e.Err)
+		}
 	}
 }

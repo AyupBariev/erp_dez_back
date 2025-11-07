@@ -1,35 +1,35 @@
 package models
 
 import (
-	"database/sql"
 	"time"
 )
 
 type OrderStatus string
 
 type Order struct {
-	ID                int             `db:"id"`
-	ERPNumber         int64           `db:"erp_number"`
-	AggregatorID      int64           `db:"aggregator_id"`
-	Aggregator        *BaseDictionary `json:"aggregator,omitempty"`
-	OurPercent        float64         `db:"our_percent"`
-	Price             string          `db:"price"`
-	ClientName        string          `db:"client_name"`
-	EngineerID        sql.NullInt64   `db:"engineer_id"`
-	Engineer          *Engineer       `json:"engineer,omitempty"`
-	AdminID           int64           `db:"admin_id"`
-	Phones            []string        `db:"phones"` // JSON в базе
-	Address           string          `db:"address"`
-	WorkVolume        string          `db:"work_volume"`
-	ProblemID         sql.NullInt64   `db:"problem_id"`
-	Problem           *BaseDictionary `json:"problem,omitempty"`
-	Note              string          `db:"note"`
-	ScheduledAt       time.Time       `db:"scheduled_at"`
-	Status            string          `db:"status"`
-	ConfirmedAt       sql.NullTime    `db:"confirmed_at"`
-	RepeatID          int
-	RepeatDescription string
-	RepeatedBy        string
-	CreatedAt         time.Time `db:"created_at"`
-	UpdatedAt         time.Time `db:"updated_at"`
+	ID                uint            `gorm:"primaryKey;autoIncrement"`
+	ERPNumber         int64           `gorm:"column:erp_number;not null"`
+	AggregatorID      int64           `gorm:"column:aggregator_id;not null"`
+	Aggregator        *BaseDictionary `gorm:"foreignKey:AggregatorID" json:"aggregator,omitempty"`
+	OurPercent        float64         `gorm:"column:our_percent"`
+	Price             string          `gorm:"column:price"`
+	FinishPrice       string          `gorm:"column:finish_price"`
+	ClientName        string          `gorm:"column:client_name"`
+	EngineerID        *int64          `gorm:"column:engineer_id"`
+	Engineer          *Engineer       `gorm:"foreignKey:EngineerID" json:"engineer,omitempty"`
+	AdminID           int64           `gorm:"column:admin_id"`
+	Phones            StringArray     `gorm:"type:json"`
+	Address           string          `gorm:"column:address"`
+	WorkVolume        string          `gorm:"column:work_volume"`
+	ProblemID         int64           `gorm:"column:problem_id"`
+	Problem           *BaseDictionary `gorm:"foreignKey:ProblemID" json:"problem,omitempty"`
+	Note              string          `gorm:"column:note"`
+	ScheduledAt       time.Time       `gorm:"column:scheduled_at"`
+	Status            string          `gorm:"column:status"`
+	ConfirmedAt       *time.Time      `gorm:"column:confirmed_at"`
+	RepeatID          *uint           `gorm:"column:repeat_id"`
+	RepeatDescription string          `gorm:"column:repeat_description"`
+	RepeatedBy        string          `gorm:"column:repeated_by"`
+	CreatedAt         time.Time       `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt         time.Time       `gorm:"column:updated_at;autoUpdateTime"`
 }

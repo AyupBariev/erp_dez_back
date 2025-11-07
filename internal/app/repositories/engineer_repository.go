@@ -25,7 +25,7 @@ func (r *EngineerRepository) Create(engineer *models.Engineer) error {
 
 func (r *EngineerRepository) queryEngineers(where string, args ...interface{}) ([]*models.Engineer, error) {
 	query := `
-		SELECT e.id, e.first_name, e.second_name, e.username, e.phone, e.telegram_id, e.is_approved
+		SELECT e.id, e.first_name, e.second_name, e.username, e.phone, e.telegram_id, e.is_approved, e.is_working
 # 		,		       COALESCE(s.is_working, FALSE) AS is_working
 		FROM engineers e
 # 		LEFT JOIN engineer_shifts s ON s.engineer_id = e.id AND s.work_date = ?
@@ -53,6 +53,7 @@ func (r *EngineerRepository) queryEngineers(where string, args ...interface{}) (
 			&e.Phone,
 			&e.TelegramID,
 			&e.IsApproved,
+			&e.IsWorking,
 			//TODO добавить поддержку графиков СИ &e.IsWorking,
 		); err != nil {
 			return nil, err
@@ -121,9 +122,9 @@ func (r *EngineerRepository) UpdateTelegramID(id int64, telegramID int64) error 
 func (r *EngineerRepository) FindByID(ID int64) (*models.Engineer, error) {
 	engineer := &models.Engineer{}
 	err := r.db.QueryRow(`
-	SELECT id, username, first_name, second_name, phone, telegram_id, is_approved
+	SELECT id, username, first_name, second_name, phone, telegram_id, is_approved, is_working
 		FROM engineers WHERE id = ?
-		`, ID).Scan(&engineer.ID, &engineer.Username, &engineer.FirstName, &engineer.SecondName, &engineer.Phone, &engineer.TelegramID, &engineer.IsApproved)
+		`, ID).Scan(&engineer.ID, &engineer.Username, &engineer.FirstName, &engineer.SecondName, &engineer.Phone, &engineer.TelegramID, &engineer.IsApproved, &engineer.IsWorking)
 	return engineer, err
 }
 
@@ -152,5 +153,23 @@ func (r *EngineerRepository) ApproveByID(engineerID int64) (*models.Engineer, er
 	}
 
 	// Повторно читаем инженера, чтобы вернуть актуальные данные
+	return r.FindByID(engineerID)
+}
+
+func (r *EngineerRepository) UpdateWorkingStatus(engineerID int64, isWorking bool) (*models.Engineer, error) {
+	res, err := r.db.Exec(`
+		UPDATE engineers 
+		SET is_working = ? 
+		WHERE id = ?
+	`, isWorking, engineerID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return nil, fmt.Errorf("engineer with id=%d not found", engineerID)
+	}
+
 	return r.FindByID(engineerID)
 }

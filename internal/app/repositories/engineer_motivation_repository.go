@@ -15,8 +15,8 @@ func NewEngineerMotivationRepository(db *gorm.DB) *EngineerMotivationRepository 
 }
 
 // Получить все мотивации за месяц
-func (r *EngineerMotivationRepository) GetByMonth(month time.Time) ([]models.EngineerMonthlyMotivation, error) {
-	var results []models.EngineerMonthlyMotivation
+func (r *EngineerMotivationRepository) GetByMonth(month time.Time) ([]models.EngineerMotivationView, error) {
+	var results []models.EngineerMotivationView
 
 	err := r.DB.
 		Table("engineers e").

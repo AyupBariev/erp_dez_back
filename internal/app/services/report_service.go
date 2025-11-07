@@ -19,6 +19,7 @@ type ReportService struct {
 
 type SubmitReportRequest struct {
 	Token       string  `json:"token" binding:"required"`
+	FinishPrice string  `json:"finish_price" binding:"required"`
 	HasRepeat   bool    `json:"has_repeat"`
 	RepeatDate  *string `json:"repeat_date,omitempty"` // формат "2006-01-02T15:04"
 	RepeatNote  string  `json:"repeat_note,omitempty"`
@@ -87,14 +88,6 @@ func (s *ReportService) SubmitReport(req SubmitReportRequest) error {
 		return err
 	}
 	isRepeat := req.HasRepeat
-	if err := s.motivationCalculator.UpdateEngineerMonthlyMotivation(
-		report.EngineerID,
-		order.Price,
-		order.OurPercent,
-		isRepeat,
-	); err != nil {
-		return err
-	}
 
 	// Логика статусов и повтора:
 	if isRepeat {
@@ -103,11 +96,23 @@ func (s *ReportService) SubmitReport(req SubmitReportRequest) error {
 			return err
 		}
 		// 2️⃣ Закрываем исходный заказ
-		return s.orderRepo.UpdateStatus(report.OrderID, "closed_finally")
+		order.Status = "closed_finally"
 	}
 
 	// Без повтора — просто закрываем
-	return s.orderRepo.UpdateStatus(report.OrderID, "closed_without_repeat")
+	order.Status = "closed_without_repeat"
+	order.FinishPrice = req.FinishPrice
+
+	if err := s.motivationCalculator.UpdateEngineerMonthlyMotivation(
+		report.EngineerID,
+		req.FinishPrice,
+		order.OurPercent,
+		isRepeat,
+	); err != nil {
+		return err
+	}
+
+	return s.orderRepo.UpdateOrder(order)
 }
 
 func (s *ReportService) createRepeatOrder(report *models.Report, orig *models.Order) error {
@@ -119,15 +124,21 @@ func (s *ReportService) createRepeatOrder(report *models.Report, orig *models.Or
 
 	// Создаём новый заказ (повтор)
 	newOrder := *orig
-	newOrder.RepeatID = orig.ID
+	repeatID := orig.ID
+	newOrder.RepeatID = &repeatID
 	newOrder.RepeatedBy = "engineer"
 	newOrder.RepeatDescription = report.RepeatNote
 	newOrder.ERPNumber = nextErpNumber
 	newOrder.Status = "new"
 	newOrder.Note = fmt.Sprintf("Повтор от %s: %s", time.Now().Format("02.01.2006"), report.RepeatNote)
 
+	newOrder.ID = 0
+	newOrder.CreatedAt = time.Time{}
+	newOrder.UpdatedAt = time.Time{}
+
 	if report.RepeatDate != nil {
-		newOrder.ScheduledAt = *report.RepeatDate
+		scheduledAt, _ := time.ParseInLocation("2006-01-02T15:04", report.RepeatDate.String(), time.Local)
+		newOrder.ScheduledAt = scheduledAt.UTC()
 	}
 
 	return s.orderRepo.Create(&newOrder)

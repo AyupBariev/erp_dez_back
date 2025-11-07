@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"database/sql"
+	"erp/internal/app/dto"
 	"erp/internal/app/models"
 	"erp/internal/app/response"
 	"erp/internal/app/services"
-	"erp/internal/utils"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -33,22 +33,6 @@ func NewOrderHandler(orderService *services.OrderService, engineerService *servi
 	}
 }
 
-// CreateOrderRequest --- Запрос на создание инженера через HTTP ---
-type CreateOrderRequest struct {
-	AggregatorID int      `json:"aggregator_id"`
-	ProblemID    int      `json:"problem_id" binding:"required"`
-	Price        string   `json:"price"`
-	OurPercent   float64  `json:"our_percent"`
-	ClientName   string   `json:"client_name"`
-	Phones       []string `json:"phones"`
-	Address      string   `json:"address"`
-	WorkVolume   string   `json:"work_volume"`
-	Note         string   `json:"note"`
-	ScheduledAt  string   `json:"scheduled_at"` // ISO8601
-	EngineerID   *int     `json:"engineer_id,omitempty"`
-	AdminID      *int     `json:"admin_id,omitempty"`
-}
-
 func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -56,7 +40,7 @@ func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
 		return
 	}
 
-	var req CreateOrderRequest
+	var req dto.CreateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -65,7 +49,7 @@ func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
 	// Добавь ProblemID
 	order := &models.Order{
 		AggregatorID: int64(req.AggregatorID),
-		ProblemID:    utils.Int64ToNullInt64(int64(req.ProblemID)),
+		ProblemID:    req.ProblemID,
 		Price:        req.Price,
 		OurPercent:   req.OurPercent,
 		ClientName:   req.ClientName,
@@ -74,26 +58,27 @@ func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
 		Address:      req.Address,
 		WorkVolume:   req.WorkVolume,
 		Note:         req.Note,
+		Status:       req.Status,
 	}
 
 	// Обработка scheduled_at
 	if req.ScheduledAt != "" {
-		scheduledAt, err := time.Parse("2006-01-02T15:04", req.ScheduledAt)
+		scheduledAt, err := time.ParseInLocation("2006-01-02T15:04", req.ScheduledAt, time.Local)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scheduled_at format, use YYYY-MM-DDTHH:MM"})
 			return
 		}
-		order.ScheduledAt = scheduledAt
+		order.ScheduledAt = scheduledAt.UTC()
 	}
 
 	// Обработка engineer_id и статуса
 	if req.EngineerID != nil {
-		order.EngineerID = sql.NullInt64{Int64: int64(*req.EngineerID), Valid: true}
-		order.Status = "in_proccess"
+		order.EngineerID = req.EngineerID
 	} else {
-		order.EngineerID = sql.NullInt64{Valid: false}
-		order.Status = "new"
+		order.EngineerID = nil
 	}
+
+	order.RepeatID = nil
 
 	if err := h.OrderService.CreateOrder(order); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -123,7 +108,7 @@ func (h *OrderHandler) ListOrders(c *gin.Context) {
 
 func (h *OrderHandler) AssignOrderHandler(c *gin.Context) {
 	var input struct {
-		ErpNumber  int64 `json:"order_number"`
+		ErpNumber  int64 `json:"erp_number"`
 		EngineerID int64 `json:"engineer_id"`
 	}
 
@@ -132,35 +117,74 @@ func (h *OrderHandler) AssignOrderHandler(c *gin.Context) {
 		return
 	}
 
-	engineer, err := h.EngineerService.GetEngineerByID(input.EngineerID)
-	if err != nil || engineer == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "engineer not found or not approved"})
-		return
-	}
-
-	order, err := h.OrderService.GetOrderForAssign(input.ErpNumber)
+	// Вызываем сервис с правильными параметрами
+	order, err := h.OrderService.UpdateEngineerAndStatus(input.EngineerID, input.ErpNumber, "in_proccess")
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
-		return
-	}
-
-	// 🚫 Проверяем, что заказ уже принят кем-то
-	if order.EngineerID.Valid && order.Status == "working" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "order already confirmed by engineer"})
-		return
-	}
-
-	// Обновляем инженера и статус
-	order.EngineerID = sql.NullInt64{Int64: int64(engineer.ID), Valid: true}
-	order.Engineer = engineer
-	order.Status = "in_proccess"
-
-	if err := h.OrderService.UpdateEngineerAndStatus(order); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	resp := response.FromOrderModel(order)
-
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *OrderHandler) UnAssignOrderHandler(c *gin.Context) {
+	var input struct {
+		ErpNumber int64 `json:"erp_number"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	order, err := h.OrderService.UnassignOrder(input.ErpNumber)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := response.FromOrderModel(order)
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *OrderHandler) UpdateOrder(c *gin.Context) {
+	erpNumber, err := strconv.Atoi(c.Param("erp_number"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order number"})
+		return
+	}
+
+	var req dto.UpdateOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	item, err := h.OrderService.Update(int64(erpNumber), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if item == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": item})
+}
+
+func (h *OrderHandler) DeleteOrder(c *gin.Context) {
+	erpOrderNumber, err := strconv.Atoi(c.Param("erp_number"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order number"})
+		return
+	}
+
+	err = h.OrderService.Delete(int64(erpOrderNumber))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Order deleted successfully"})
 }

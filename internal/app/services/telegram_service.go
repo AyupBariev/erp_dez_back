@@ -22,3 +22,11 @@ func (s *TelegramService) SendMessageWithKeyboard(chatID int64, text string, key
 		log.Printf("Ошибка отправки сообщения Telegram: %v", err)
 	}
 }
+
+func (s *TelegramService) sendMessage(chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+
+	if _, err := s.Bot.Send(msg); err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}

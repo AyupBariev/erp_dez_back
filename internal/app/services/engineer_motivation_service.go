@@ -15,7 +15,7 @@ func NewEngineerMotivationService(repo *repositories.EngineerMotivationRepositor
 	return &EngineerMotivationService{repo: repo}
 }
 
-func (s *EngineerMotivationService) GetMonthlyMotivation(monthStr string) ([]models.EngineerMonthlyMotivation, error) {
+func (s *EngineerMotivationService) GetMonthlyMotivation(monthStr string) ([]models.EngineerMotivationView, error) {
 	var month time.Time
 	var err error
 	if monthStr == "" {

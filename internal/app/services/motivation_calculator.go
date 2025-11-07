@@ -17,15 +17,14 @@ type MotivationCalculator struct {
 // UpdateEngineerMonthlyMotivation обновляет месячную мотивацию инженера после отправки отчета
 func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 	engineerID int64,
-	orderAmount string,
-	orderPercent float64, // теперь передаем OurPercent
+	finishPrice string,
+	orderPercent float64,
 	isRepeat bool,
 ) error {
 	now := time.Now()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-
 	var monthly models.EngineerMonthlyMotivation
-	err := mc.DB.Where("engineer_id = ? AND month = ?", engineerID, monthStart).First(&monthly).Error
+	err := mc.DB.Where("engineer_id = ? AND month = ?", engineerID, monthStart.Format("2006-01-02")).First(&monthly).Error
 	if !errors.Is(err, gorm.ErrRecordNotFound) && err != nil {
 		return err
 	}
@@ -40,9 +39,9 @@ func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 
 	// Обновляем счетчики
 	monthly.ReportsCount += 1
-	amount, err := strconv.ParseFloat(orderAmount, 64)
+	amount, err := strconv.ParseFloat(finishPrice, 64)
 	if err != nil {
-		return fmt.Errorf("invalid orderAmount: %w", err)
+		return fmt.Errorf("invalid finishPrice: %w", err)
 	}
 	if !isRepeat {
 		monthly.PrimaryOrdersCount += 1
