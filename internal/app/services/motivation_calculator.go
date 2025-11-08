@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"gorm.io/gorm"
-	"math"
 	"strconv"
 	"time"
 )
@@ -23,6 +22,7 @@ func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 ) error {
 	now := time.Now()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
 	var monthly models.EngineerMonthlyMotivation
 	err := mc.DB.Where("engineer_id = ? AND month = ?", engineerID, monthStart.Format("2006-01-02")).First(&monthly).Error
 	if !errors.Is(err, gorm.ErrRecordNotFound) && err != nil {
@@ -30,65 +30,68 @@ func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 	}
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// Создаем новую запись
 		monthly = models.EngineerMonthlyMotivation{
 			EngineerID: engineerID,
 			Month:      monthStart,
 		}
 	}
 
-	// Обновляем счетчики
-	monthly.ReportsCount += 1
+	// 1️⃣ Разбираем входные данные
 	amount, err := strconv.ParseFloat(finishPrice, 64)
 	if err != nil {
 		return fmt.Errorf("invalid finishPrice: %w", err)
 	}
-	if !isRepeat {
-		monthly.PrimaryOrdersCount += 1
-		monthly.OrdersTotalAmount += amount
-		monthly.GrossProfit += amount * orderPercent / 100
-	} else {
-		monthly.RepeatOrdersCount += 1
+
+	monthly.ReportsCount++
+	if isRepeat {
+		monthly.RepeatOrdersCount++
 		monthly.RepeatOrdersAmount += amount
-	}
-
-	// Средний чек по первичным заказам
-	if monthly.PrimaryOrdersCount > 0 {
-		monthly.AverageCheck = monthly.OrdersTotalAmount / float64(monthly.PrimaryOrdersCount)
 	} else {
-		monthly.AverageCheck = 0
+		monthly.PrimaryOrdersCount++
+		monthly.OrdersTotalAmount += amount
 	}
 
-	// Рассчитываем процент мотивации
+	monthly.GrossProfit += amount * orderPercent / 100
+
+	totalAmount := monthly.OrdersTotalAmount + monthly.RepeatOrdersAmount
+	if monthly.PrimaryOrdersCount > 0 {
+		monthly.AverageCheck = totalAmount / float64(monthly.PrimaryOrdersCount)
+	}
+
+	// 2️⃣ Загружаем шаги мотивации
 	var steps []models.MotivationStep
 	if err := mc.DB.Order("sort ASC").Find(&steps).Error; err != nil {
 		return err
 	}
 
-	motivationPercent := 0.0
+	// 3️⃣ Определяем процент по текущему заказу
+	var motivationPercent float64
+	orderType := "primary"
+	if isRepeat {
+		orderType = "repeat"
+	}
+
 	for _, step := range steps {
-		switch step.OrderType {
-		case "primary":
-			if monthly.OrdersTotalAmount >= step.MinAmount {
-				motivationPercent += step.Percent
-			}
-		case "repeat":
-			if monthly.RepeatOrdersAmount >= step.MinAmount {
-				motivationPercent += step.Percent
-			}
-		case "bonus":
-			if monthly.OrdersTotalAmount+monthly.RepeatOrdersAmount >= step.MinAmount {
-				motivationPercent += step.Percent
-			}
+		if step.OrderType == orderType && amount >= step.MinAmount {
+			motivationPercent = step.Percent
 		}
 	}
 
-	// Ограничение 30%
-	monthly.MotivationPercent = math.Min(motivationPercent, 30)
+	// 4️⃣ Проверяем бонус
+	hasBonus := totalAmount >= 100000 // если хотя бы один заказ на 100к+
+	if hasBonus {
+		motivationPercent += 5
+	}
 
-	// Сумма мотивации (берем все заказы)
-	monthly.TotalMotivation = (monthly.OrdersTotalAmount + monthly.RepeatOrdersAmount) * monthly.MotivationPercent / 100
+	// Ограничение по максимуму
+	if motivationPercent > 30 {
+		motivationPercent = 30
+	}
 
-	// Сохраняем
+	monthly.MotivationPercent = motivationPercent
+
+	// 5️⃣ Расчёт общей мотивации
+	monthly.TotalMotivationAmount = totalAmount * motivationPercent / 100
+
 	return mc.DB.Save(&monthly).Error
 }

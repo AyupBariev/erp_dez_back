@@ -16,9 +16,7 @@ func SetupRouter(h Handlers) *gin.Engine {
 	prefixApi.POST("/login", h.Auth.LoginHandler)
 
 	prefixApi.GET("/reports/link/:token", h.Report.GetReportByToken)
-	prefixApi.GET("/report-links/validate", h.Report.GetReportByToken)
 	prefixApi.POST("/reports/submit", h.Report.SubmitReport)
-	prefixApi.POST("/orders/:id/report", h.Report.SubmitReport)
 	prefixApi.Use(middleware.AuthMiddleware(h.Auth.AuthService))
 	{
 		users := prefixApi.Group("/users")

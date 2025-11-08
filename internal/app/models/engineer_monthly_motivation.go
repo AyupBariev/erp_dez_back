@@ -17,9 +17,8 @@ type EngineerMonthlyMotivation struct {
 	GrossProfit  float64 `gorm:"not null;default:0"` // валовая прибыль
 	AverageCheck float64 `gorm:"not null;default:0"` // средний чек (по первичным заказам)
 
-	MotivationPercent float64 `gorm:"not null;default:0"` // итоговый % мотивации
-	TotalMotivation   float64 `gorm:"not null;default:0"` // сумма мотивации
-	ConfirmedByAdmin  bool    `gorm:"default:false"`
+	MotivationPercent     float64 `gorm:"not null;default:0"` // итоговый % мотивации
+	TotalMotivationAmount float64 `gorm:"not null;default:0"` // общая сумма мотивации
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -17,7 +17,7 @@ func NewEngineerMotivationRepository(db *gorm.DB) *EngineerMotivationRepository 
 // Получить все мотивации за месяц
 func (r *EngineerMotivationRepository) GetByMonth(month time.Time) ([]models.EngineerMotivationView, error) {
 	var results []models.EngineerMotivationView
-
+	monthString := month.Format("2006-01") + "-01"
 	err := r.DB.
 		Table("engineers e").
 		Select(`
@@ -31,10 +31,9 @@ func (r *EngineerMotivationRepository) GetByMonth(month time.Time) ([]models.Eng
 			COALESCE(m.gross_profit, 0) as gross_profit,
 			COALESCE(m.average_check, 0) as average_check,
 			COALESCE(m.motivation_percent, 0) as motivation_percent,
-			COALESCE(m.total_motivation, 0) as total_motivation,
-			COALESCE(m.confirmed_by_admin, false) as confirmed_by_admin
+    		COALESCE(m.total_motivation_amount, 0) as total_motivation_amount
 		`).
-		Joins(`LEFT JOIN engineer_monthly_motivations m ON m.engineer_id = e.id AND m.month = ?`, month).
+		Joins(`LEFT JOIN engineer_monthly_motivations m ON m.engineer_id = e.id AND m.month = ?`, monthString).
 		Scan(&results).Error
 
 	return results, err

@@ -20,13 +20,12 @@ func (s *EngineerMotivationService) GetMonthlyMotivation(monthStr string) ([]mod
 	var err error
 	if monthStr == "" {
 		now := time.Now()
-		month = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+		month = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	} else {
 		month, err = time.Parse("2006-01", monthStr)
 		if err != nil {
 			return nil, err
 		}
 	}
-
 	return s.repo.GetByMonth(month)
 }
