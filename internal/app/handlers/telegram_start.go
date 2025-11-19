@@ -8,6 +8,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (h *TelegramHandler) handleStart(msg *tgbotapi.Message) {
@@ -201,7 +202,7 @@ func (h *TelegramHandler) showOrderDetails(query *tgbotapi.CallbackQuery) {
 		price,
 	)
 
-	reportLink, _ := h.reportService.GenerateReportLink(order.ERPNumber, int64(order.Engineer.ID))
+	reportLink, _ := h.reportService.GenerateReportLink(int64(order.ID), int64(order.Engineer.ID))
 
 	// 🎛 Кнопки под заказом
 	var buttons []tgbotapi.InlineKeyboardButton
@@ -218,9 +219,17 @@ func (h *TelegramHandler) showOrderDetails(query *tgbotapi.CallbackQuery) {
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = keyboard
 
-	if _, err := h.bot.Send(msg); err != nil {
+	message, err := h.bot.Send(msg)
+	if err != nil {
 		log.Printf("Ошибка при отправке деталей заказа: %v", err)
 	}
+	go func(chatID int64, msgID int) {
+		time.Sleep(1 * time.Minute)
+		del := tgbotapi.NewDeleteMessage(chatID, msgID)
+		if _, err := h.bot.Request(del); err != nil {
+			log.Print("del err:", err)
+		}
+	}(query.Message.Chat.ID, message.MessageID)
 }
 
 func parseErpNumber(data string) int64 {

@@ -40,15 +40,7 @@ func (s *OrderService) CreateOrder(order *models.Order) error {
 	return s.orderRepo.Create(order)
 }
 
-func (s *OrderService) Update(erpNumber int64, req dto.UpdateOrderRequest) (*models.Order, error) {
-	order, err := s.orderRepo.GetOrderByErpNumber(erpNumber)
-	if err != nil {
-		return nil, err
-	}
-	if order == nil {
-		return nil, nil // not found
-	}
-
+func (s *OrderService) Update(order *models.Order, req dto.UpdateOrderRequest) (*models.Order, error) {
 	if req.AggregatorID != 0 {
 		order.AggregatorID = req.AggregatorID
 	}
@@ -84,18 +76,11 @@ func (s *OrderService) Update(erpNumber int64, req dto.UpdateOrderRequest) (*mod
 		order.Status = req.Status
 	}
 
-	err = s.orderRepo.UpdateOrder(order)
-	if err != nil {
+	if err := s.orderRepo.UpdateOrder(order); err != nil {
 		return nil, err
 	}
 
-	// Обновляем объект order из базы, чтобы получить актуальные данные
-	updatedOrder, err := s.orderRepo.GetOrderByErpNumber(erpNumber)
-	if err != nil {
-		return nil, err
-	}
-
-	return updatedOrder, nil
+	return order, nil
 }
 
 func (s *OrderService) GetOrders(date *string) ([]*models.Order, error) {
@@ -202,6 +187,14 @@ func (s *OrderService) EngineerAcceptOrderByErpNumber(erpNumber int64) error {
 
 	// Сохраняем изменения
 	return s.orderRepo.UpdateOrder(order)
+}
+
+func (s *OrderService) GetOrderByID(orderID int64) (*models.Order, error) {
+	order, err := s.orderRepo.GetOrderByID(orderID)
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
 }
 
 func (s *OrderService) GetOrderByErpNumber(erpNumber int64) (*models.Order, error) {

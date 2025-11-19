@@ -49,6 +49,19 @@ func (r *OrderRepository) Create(order *models.Order) error {
 	return nil
 }
 
+// Получение заказа по первичному ключу
+func (r *OrderRepository) GetOrderByID(orderID int64) (*models.Order, error) {
+	var order models.Order
+	err := withOrderPreloads(r.db).
+		Where("id = ?", orderID).
+		First(&order).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("order not found")
+	}
+	return &order, err
+}
+
 // Получение заказа по ERP номеру
 func (r *OrderRepository) GetOrderByErpNumber(erpNumber int64) (*models.Order, error) {
 	var order models.Order
@@ -62,16 +75,45 @@ func (r *OrderRepository) GetOrderByErpNumber(erpNumber int64) (*models.Order, e
 	return &order, err
 }
 
+func (r *OrderRepository) GetByRepeatID(id uint) (*models.Order, error) {
+	var order models.Order
+	err := withOrderPreloads(r.db).
+		Where("repeat_id = ?", id).
+		First(&order).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("order not found")
+		}
+		return nil, err
+	}
+
+	return &order, nil
+}
+
 // Заказы инженера за сегодня
 func (r *OrderRepository) GetTodayOrders(chatID int64) ([]models.Order, error) {
 	var orders []models.Order
 
-	startOfDay := time.Now().Truncate(24 * time.Hour)
-	endOfDay := startOfDay.Add(24 * time.Hour)
+	loc := time.Local
+	nowLocal := time.Now().In(loc)
+
+	startOfDayLocal := time.Date(
+		nowLocal.Year(), nowLocal.Month(), nowLocal.Day(),
+		0, 0, 0, 0, loc,
+	)
+
+	startOfDayUTC := startOfDayLocal.UTC()
+	endOfDayUTC := startOfDayUTC.Add(24 * time.Hour)
 
 	err := withOrderPreloads(r.db).
 		Joins("JOIN engineers e ON e.id = orders.engineer_id").
-		Where("e.telegram_id = ? AND scheduled_at BETWEEN ? AND ? AND status = ?", chatID, startOfDay, endOfDay, "working").
+		Where(`
+            e.telegram_id = ?
+            AND scheduled_at >= ?
+            AND scheduled_at < ?
+            AND status = ?
+        `, chatID, startOfDayUTC, endOfDayUTC, "working").
 		Find(&orders).Error
 
 	return orders, err
@@ -95,7 +137,7 @@ func (r *OrderRepository) GetCashOrders(chatID int64) ([]models.Order, error) {
 
 	err := withOrderPreloads(r.db).
 		Joins("JOIN engineers e ON e.id = orders.engineer_id").
-		Where("e.telegram_id = ? AND payment_type = 'cash'", chatID).
+		Where("e.telegram_id = ? AND status = 'sent_to_cash'", chatID).
 		Find(&orders).Error
 
 	return orders, err

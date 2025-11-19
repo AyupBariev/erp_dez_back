@@ -12,6 +12,7 @@ type Order struct {
 	AggregatorID      int64           `gorm:"column:aggregator_id;not null"`
 	Aggregator        *BaseDictionary `gorm:"foreignKey:AggregatorID" json:"aggregator,omitempty"`
 	OurPercent        float64         `gorm:"column:our_percent"`
+	AggregatorPayout  float64         `gorm:"column:aggregator_payout"`
 	Price             string          `gorm:"column:price"`
 	FinishPrice       string          `gorm:"column:finish_price"`
 	ClientName        string          `gorm:"column:client_name"`

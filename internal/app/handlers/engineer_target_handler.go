@@ -12,6 +12,12 @@ type EngineerTargetHandler struct {
 	service *services.EngineerTargetService
 }
 
+type PayAdvanceRequest struct {
+	EngineerID int64   `json:"engineer_id"`
+	Month      string  `json:"month"`
+	Amount     float64 `json:"amount"`
+}
+
 func NewEngineerTargetHandler(service *services.EngineerTargetService) *EngineerTargetHandler {
 	return &EngineerTargetHandler{service: service}
 }
@@ -54,4 +60,36 @@ func (h *EngineerTargetHandler) UpdateTarget(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, target)
+}
+
+func (h *EngineerHandler) GetMonthPayouts(c *gin.Context) {
+	month := c.Query("month")
+	if month == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "month required YYYY-MM"})
+		return
+	}
+
+	rows, err := h.engineerService.GetMonthPayouts(month)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, rows)
+}
+
+func (h *EngineerHandler) PayAdvance(c *gin.Context) {
+	var req PayAdvanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+		return
+	}
+
+	err := h.engineerService.PayAdvance(req.EngineerID, req.Month, req.Amount)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

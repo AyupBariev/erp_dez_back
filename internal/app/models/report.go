@@ -11,4 +11,6 @@ type Report struct {
 	RepeatNote  string     `db:"repeat_note"`
 	Description string     `db:"description"`
 	CreatedAt   time.Time  `db:"created_at"`
+	IssuedMoney float64    `db:"issued_money"`
+	GaveCash    float64    `db:"gave_cash"`
 }

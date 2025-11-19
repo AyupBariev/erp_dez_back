@@ -7,6 +7,7 @@ require (
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/golang-migrate/migrate/v4 v4.18.3
+	github.com/google/wire v0.7.0
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.12.1
 	golang.org/x/crypto v0.36.0

@@ -7,6 +7,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/v9"
 	"strings"
+	"time"
 )
 
 type NotificationService struct {
@@ -72,7 +73,7 @@ func (s *NotificationService) NotifyEngineerOrderUnassigned(order *models.Order,
 	)
 
 	id := engineer.GetTelegramID()
-	s.Telegram.sendMessage(*id, message)
+	s.Telegram.sendMessageWithTTL(*id, message, 1*time.Minute)
 }
 
 // formatOrderMessage — формирует текст для Telegram-сообщения инженеру

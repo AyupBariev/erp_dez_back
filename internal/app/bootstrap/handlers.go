@@ -3,6 +3,7 @@ package bootstrap
 import (
 	. "erp/internal/app/handlers"
 	"erp/internal/app/services"
+	"erp/internal/interfaces/cleanhandler"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -19,6 +20,7 @@ type Handlers struct {
 	Motivation         *MotivationHandler
 	EngineerTarget     *EngineerTargetHandler
 	EngineerMotivation *EngineerMotivationHandler
+	AggregatorPayout   *cleanhandler.AggregatorPayoutHandler
 }
 
 func NewHandlers(
@@ -32,6 +34,7 @@ func NewHandlers(
 	motivationService *services.MotivationService,
 	engineerTargetService *services.EngineerTargetService,
 	engineerMotivationService *services.EngineerMotivationService,
+	aggPayoutHandler *cleanhandler.AggregatorPayoutHandler,
 ) Handlers {
 	telegramHandler := NewTelegramHandler(bot, engineerService, orderService, reportService)
 	authHandler := NewAuthHandler(authService)
@@ -58,5 +61,6 @@ func NewHandlers(
 		Motivation:         motivationHandler,
 		EngineerTarget:     engineerTargetHandler,
 		EngineerMotivation: engineerMotivationHandler,
+		AggregatorPayout:   aggPayoutHandler,
 	}
 }

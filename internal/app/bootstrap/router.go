@@ -8,7 +8,8 @@ import (
 func SetupRouter(h Handlers) *gin.Engine {
 	router := gin.Default()
 	router.Use(gin.Logger())
-	router.Use(middleware.ErrorLogger())
+	router.Use(gin.Recovery())           // базовый recover от Gin
+	router.Use(middleware.ErrorLogger()) // наш кастомный
 	// Public routes
 
 	// Protected routes
@@ -40,7 +41,17 @@ func SetupRouter(h Handlers) *gin.Engine {
 			orders.POST("/assign", h.Order.AssignOrderHandler)
 			orders.POST("/unassign", h.Order.UnAssignOrderHandler)
 		}
-		//
+		reports := prefixApi.Group("/reports")
+		{
+			reports.GET("/cash", h.Report.ListCashReports) // ?from=..&to=..
+			reports.POST("/cash/:erp_number/receive", h.Report.ReceiveCash)
+		}
+
+		agg := prefixApi.Group("/aggregator")
+		{
+			agg.GET("/daily", h.AggregatorPayout.ListDayPayouts)
+		}
+
 		engineers := prefixApi.Group("/engineers")
 		{
 			engineers.POST("/", h.Engineer.CreateEngineer) // POST /api/engineers
@@ -50,6 +61,9 @@ func SetupRouter(h Handlers) *gin.Engine {
 			//engineers.DELETE("/:id", h.Engineer.DeleteEngineer) // DELETE /api/engineers/:id
 			engineers.POST("/accept-engineer", h.Admin.ApproveEngineer)
 			engineers.POST("/:engineer_id/working-status", h.Admin.ToggleWorkingStatusEngineer)
+
+			engineers.GET("/month-payouts", h.Engineer.GetMonthPayouts)
+			engineers.POST("/advance", h.Engineer.PayAdvance)
 		}
 
 		motivations := prefixApi.Group("/motivations")

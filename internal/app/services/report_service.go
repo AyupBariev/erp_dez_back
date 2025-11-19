@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"erp/internal/app/models"
 	"erp/internal/app/repositories"
+	"erp/internal/domain"
 	"fmt"
 	"gorm.io/gorm"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -40,7 +42,7 @@ func (s *ReportService) GenerateReportLink(orderID, engineerID int64) (string, e
 		Token:      token,
 		OrderID:    orderID,
 		EngineerID: engineerID,
-		ExpiresAt:  time.Now().Add(1 * time.Hour),
+		ExpiresAt:  time.Now().Add(24 * time.Hour), // действует сутки
 	}
 
 	if err := s.reportRepo.SaveReportLink(link); err != nil {
@@ -55,64 +57,116 @@ func (s *ReportService) GetByToken(token string) (*models.ReportLink, error) {
 }
 
 func (s *ReportService) SubmitReport(req SubmitReportRequest) error {
-	link, err := s.reportRepo.GetByToken(req.Token)
+	link, err := s.validateAndGetLink(req.Token)
 	if err != nil {
-		return fmt.Errorf("invalid token: %w", err)
+		return err
+	}
+
+	report, isNewReport, hadRepeat, err := s.createOrUpdateReport(link, req)
+	if err != nil {
+		return err
+	}
+
+	order, err := s.orderRepo.GetOrderByID(report.OrderID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.handleRepeatLogic(req, report, order, hadRepeat); err != nil {
+		return err
+	}
+	// ⛔ мотивацию считаем только если отчёт новый(по первичному или повторному заказу)
+	if isNewReport {
+		if err := s.motivationCalculator.UpdateEngineerMonthlyMotivation(
+			report.EngineerID,
+			req.FinishPrice,
+			order.OurPercent,
+			order.RepeatID != nil,
+		); err != nil {
+			return err
+		}
+	}
+
+	finishPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
+	order.FinishPrice = fmt.Sprintf("%.2f", finishPrice)
+	order.AggregatorPayout = finishPrice * (100 - order.OurPercent) / 100
+	return s.orderRepo.UpdateOrder(order)
+}
+
+func (s *ReportService) validateAndGetLink(token string) (*models.ReportLink, error) {
+	link, err := s.reportRepo.GetByToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
 	}
 
 	if link.ExpiresAt.Before(time.Now()) {
-		return fmt.Errorf("token expired")
+		return nil, fmt.Errorf("token expired")
 	}
 
-	report := &models.Report{
-		OrderID:     link.OrderID,
-		EngineerID:  link.EngineerID,
-		HasRepeat:   req.HasRepeat,
-		RepeatNote:  req.RepeatNote,
-		Description: req.Description,
+	return link, nil
+}
+
+func (s *ReportService) createOrUpdateReport(link *models.ReportLink, req SubmitReportRequest) (*models.Report, bool, bool, error) {
+	report, err := s.reportRepo.GetByOrderID(strconv.FormatInt(link.OrderID, 10))
+
+	isNewReport := false
+	hadRepeat := false
+
+	if err != nil || report == nil {
+		// создаём новый
+		report = &models.Report{
+			OrderID:     link.OrderID,
+			EngineerID:  link.EngineerID,
+			HasRepeat:   req.HasRepeat,
+			RepeatNote:  req.RepeatNote,
+			Description: req.Description,
+		}
+		isNewReport = true
+	} else {
+		hadRepeat = report.HasRepeat
+		// обновляем существующий
+		report.HasRepeat = req.HasRepeat
+		report.RepeatNote = req.RepeatNote
+		report.Description = req.Description
 	}
 
 	if req.RepeatDate != nil {
-		if t, err := time.Parse("2006-01-02T15:04", *req.RepeatDate); err == nil {
-			report.RepeatDate = &t
+		scheduledAt, err := time.ParseInLocation("2006-01-02T15:04", *req.RepeatDate, time.Local)
+		if err != nil {
+			return nil, false, hadRepeat, err
 		}
+		report.RepeatDate = &scheduledAt
 	}
 
 	if err := s.reportRepo.SaveReport(report); err != nil {
-		return err
+		return nil, false, hadRepeat, err
 	}
 
-	// Получаем исходный заказ
-	order, err := s.orderRepo.GetOrderByErpNumber(report.OrderID)
-	if err != nil {
-		return err
-	}
-	isRepeat := req.HasRepeat
+	return report, isNewReport, hadRepeat, nil
+}
 
-	// Логика статусов и повтора:
-	if isRepeat {
-		// 1️⃣ Создаём повтор
+func (s *ReportService) handleRepeatLogic(req SubmitReportRequest, report *models.Report, order *models.Order, hadRepeat bool) error {
+	if !req.HasRepeat {
+		order.Status = "closed_without_repeat"
+		return nil
+	}
+
+	// проверка был ли ранее создан повтор
+	if hadRepeat {
+		if err := s.updateRepeatOrder(report, order.ID); err != nil {
+			return err
+		}
+	} else {
 		if err := s.createRepeatOrder(report, order); err != nil {
 			return err
 		}
-		// 2️⃣ Закрываем исходный заказ
-		order.Status = "closed_finally"
 	}
 
-	// Без повтора — просто закрываем
-	order.Status = "closed_without_repeat"
-	order.FinishPrice = req.FinishPrice
+	finishPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
+	order.FinishPrice = fmt.Sprintf("%.2f", finishPrice)
+	order.AggregatorPayout = finishPrice * (100 - order.OurPercent) / 100
 
-	if err := s.motivationCalculator.UpdateEngineerMonthlyMotivation(
-		report.EngineerID,
-		req.FinishPrice,
-		order.OurPercent,
-		isRepeat,
-	); err != nil {
-		return err
-	}
-
-	return s.orderRepo.UpdateOrder(order)
+	return nil
 }
 
 func (s *ReportService) createRepeatOrder(report *models.Report, orig *models.Order) error {
@@ -129,17 +183,44 @@ func (s *ReportService) createRepeatOrder(report *models.Report, orig *models.Or
 	newOrder.RepeatedBy = "engineer"
 	newOrder.RepeatDescription = report.RepeatNote
 	newOrder.ERPNumber = nextErpNumber
-	newOrder.Status = "new"
-	newOrder.Note = fmt.Sprintf("Повтор от %s: %s", time.Now().Format("02.01.2006"), report.RepeatNote)
+	newOrder.Status = "working"
 
 	newOrder.ID = 0
+	newOrder.Aggregator = nil
+	newOrder.Problem = nil
 	newOrder.CreatedAt = time.Time{}
 	newOrder.UpdatedAt = time.Time{}
 
-	if report.RepeatDate != nil {
-		scheduledAt, _ := time.ParseInLocation("2006-01-02T15:04", report.RepeatDate.String(), time.Local)
-		newOrder.ScheduledAt = scheduledAt.UTC()
-	}
+	newOrder.ScheduledAt = *report.RepeatDate
 
 	return s.orderRepo.Create(&newOrder)
+}
+
+func (s *ReportService) updateRepeatOrder(report *models.Report, RepeatID uint) error {
+
+	repeatOrder, err := s.orderRepo.GetByRepeatID(RepeatID)
+	if err != nil {
+		return err
+	}
+
+	repeatOrder.RepeatDescription = report.RepeatNote
+	repeatOrder.Note = fmt.Sprintf("Повтор от %s: %s", time.Now().Format("02.01.2006"), report.RepeatNote)
+	repeatOrder.ScheduledAt = *report.RepeatDate
+
+	return s.orderRepo.UpdateOrder(repeatOrder)
+}
+
+func (s *ReportService) GetCashReports(from, to string) ([]*domain.CashReport, error) {
+	return s.reportRepo.GetCashReports(from, to)
+}
+
+func (s *ReportService) ReceiveCash(orderID int64, gaveCash float64, issuedMoney float64, comment string) error {
+	if err := s.reportRepo.CheckMotivationPrepaymentLimit(orderID); err != nil {
+		return err
+	}
+
+	if err := s.reportRepo.MarkIssued(orderID, gaveCash, issuedMoney, comment); err != nil {
+		return err
+	}
+	return nil
 }

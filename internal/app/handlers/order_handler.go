@@ -5,6 +5,7 @@ import (
 	"erp/internal/app/models"
 	"erp/internal/app/response"
 	"erp/internal/app/services"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
@@ -154,13 +155,17 @@ func (h *OrderHandler) UpdateOrder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order number"})
 		return
 	}
-
 	var req dto.UpdateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	item, err := h.OrderService.Update(int64(erpNumber), req)
+	order, err := h.OrderService.GetOrderByErpNumber(int64(erpNumber))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Errorf("cant load order for payout: %w", err)})
+		return
+	}
+	item, err := h.OrderService.Update(order, req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

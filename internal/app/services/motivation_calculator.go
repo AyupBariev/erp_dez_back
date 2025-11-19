@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"gorm.io/gorm"
+	"log"
+	"math"
 	"strconv"
 	"time"
 )
@@ -37,7 +39,10 @@ func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 	}
 
 	// 1️⃣ Разбираем входные данные
-	amount, err := strconv.ParseFloat(finishPrice, 64)
+	totalOrderProfit, err := strconv.ParseFloat(finishPrice, 64)
+	grossProfit := math.Round(totalOrderProfit * orderPercent / 100)
+	monthly.AggregatorPayout += math.Round(totalOrderProfit - grossProfit)
+
 	if err != nil {
 		return fmt.Errorf("invalid finishPrice: %w", err)
 	}
@@ -45,53 +50,86 @@ func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 	monthly.ReportsCount++
 	if isRepeat {
 		monthly.RepeatOrdersCount++
-		monthly.RepeatOrdersAmount += amount
+		monthly.RepeatOrdersAmount += grossProfit
 	} else {
 		monthly.PrimaryOrdersCount++
-		monthly.OrdersTotalAmount += amount
+		monthly.OrdersTotalAmount += grossProfit
 	}
 
-	monthly.GrossProfit += amount * orderPercent / 100
+	monthly.GrossProfit += grossProfit
 
 	totalAmount := monthly.OrdersTotalAmount + monthly.RepeatOrdersAmount
 	if monthly.PrimaryOrdersCount > 0 {
-		monthly.AverageCheck = totalAmount / float64(monthly.PrimaryOrdersCount)
+		monthly.AverageCheck = math.Round(totalAmount / float64(monthly.PrimaryOrdersCount))
 	}
 
 	// 2️⃣ Загружаем шаги мотивации
 	var steps []models.MotivationStep
-	if err := mc.DB.Order("sort ASC").Find(&steps).Error; err != nil {
+	if err := mc.DB.Order("percent ASC").Find(&steps).Error; err != nil {
 		return err
 	}
 
-	// 3️⃣ Определяем процент по текущему заказу
-	var motivationPercent float64
+	// 3️⃣ Определяем базовую и бонусную мотивацию
+	var basePercent float64
+	var bonusPercent float64
 	orderType := "primary"
 	if isRepeat {
 		orderType = "repeat"
 	}
 
+	// Найдём бонусный шаг
+	var bonusStep *models.MotivationStep
 	for _, step := range steps {
-		if step.OrderType == orderType && amount >= step.MinAmount {
-			motivationPercent = step.Percent
+		if step.Type == "bonus" {
+			bonusStep = &step
+			break
 		}
 	}
 
-	// 4️⃣ Проверяем бонус
-	hasBonus := totalAmount >= 100000 // если хотя бы один заказ на 100к+
+	// Проверяем: активируется ли бонус
+	hasBonus := bonusStep != nil && totalOrderProfit >= bonusStep.MinAmount
+
 	if hasBonus {
-		motivationPercent += 5
+		// ✅ Бонус считается отдельно
+		bonusPercent = bonusStep.Percent
+	} else {
+		// ✅ Работаем с сеткой progression
+
+		currentBase := monthly.BaseMotivationPercent
+		nextBase := currentBase
+		log.Printf("STEP 1: loaded BaseMotivationPercent=%+v", currentBase)
+		log.Printf("STEP 2: loaded nextBase=%+v", nextBase)
+
+		for _, step := range steps {
+			log.Printf("STEP 3: loaded orderType=%+v", orderType)
+			log.Printf("STEP 3.1: loaded step.Type=%+v", step.Type)
+			if step.Type == orderType && step.Type != "bonus" {
+				log.Printf("STEP 4: loaded totalOrderProfit=%+v", totalOrderProfit)
+				log.Printf("STEP 5: loaded  step.MinAmount =%+v", step.MinAmount)
+				log.Printf("STEP 6: loaded  step.Percent =%+v", step.Percent)
+				log.Printf("STEP 7: loaded  currentBase =%+v", currentBase)
+				if totalOrderProfit >= step.MinAmount && step.Percent > currentBase {
+					nextBase = step.Percent
+					break // только одно продвижение
+				}
+			}
+		}
+		log.Printf("STEP 8: loaded  basePercent =%+v", basePercent)
+		basePercent = nextBase
 	}
 
-	// Ограничение по максимуму
-	if motivationPercent > 30 {
-		motivationPercent = 30
-	}
+	// ✅ Сохраняем только актуальные проценты
+	monthly.BaseMotivationPercent = basePercent
+	log.Printf("STEP 9: loaded  basePercent =%+v var = %+v", monthly.BaseMotivationPercent, basePercent)
+
+	monthly.BonusPercent = bonusPercent
+
+	// Итоговый процент (без двойного бонусирования)
+	motivationPercent := min(basePercent+bonusPercent, 30)
 
 	monthly.MotivationPercent = motivationPercent
 
-	// 5️⃣ Расчёт общей мотивации
-	monthly.TotalMotivationAmount = totalAmount * motivationPercent / 100
-
+	// 💰 Общая сумма мотивации
+	monthly.TotalMotivationAmount = math.Round((monthly.OrdersTotalAmount + monthly.RepeatOrdersAmount) * motivationPercent / 100)
 	return mc.DB.Save(&monthly).Error
 }

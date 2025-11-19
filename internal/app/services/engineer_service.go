@@ -7,16 +7,34 @@ import (
 	"erp/internal/pkg/logger"
 	"errors"
 	"fmt"
+	"gorm.io/gorm"
+	"time"
 )
+
+type PayoutRow struct {
+	EngineerID int64  `json:"engineer_id"`
+	FirstName  string `json:"first_name"`
+	SecondName string `json:"second_name"`
+	Month      string `json:"month"`
+
+	Salary      float64 `json:"salary"`
+	Advance     float64 `json:"advance"`
+	PaidAdvance float64 `json:"paid_advance"`
+	Left        float64 `json:"left"`
+	Total       float64 `json:"total"`
+
+	CanPay bool `json:"can_pay"`
+}
 
 var ErrEngineerAlreadyExists = errors.New("engineer already exists")
 
 type EngineerService struct {
 	engineerRepo *repositories.EngineerRepository
+	db           *gorm.DB
 }
 
-func NewEngineerService(engineerRepo *repositories.EngineerRepository) *EngineerService {
-	return &EngineerService{engineerRepo: engineerRepo}
+func NewEngineerService(engineerRepo *repositories.EngineerRepository, db *gorm.DB) *EngineerService {
+	return &EngineerService{engineerRepo: engineerRepo, db: db}
 }
 
 // GetEngineerByTelegramID Найти инженера по Telegram ID
@@ -122,4 +140,111 @@ func (s *EngineerService) ListWorkingEngineers(date string) ([]*models.Engineer,
 // ApproveEngineer Активировать учетку инженера
 func (s *EngineerService) ApproveEngineer(engineerID int64) (*models.Engineer, error) {
 	return s.engineerRepo.ApproveByID(engineerID)
+}
+
+func (s *EngineerService) GetMonthPayouts(month string) ([]PayoutRow, error) {
+	monthDate, _ := time.Parse("2006-01", month)
+	monthStart := time.Date(monthDate.Year(), monthDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthString := monthStart.Format("2006-01") + "-01"
+	// 1. Получаем ВСЕХ инженеров
+	var engineers []models.Engineer
+	if err := s.db.Find(&engineers).Error; err != nil {
+		return nil, err
+	}
+
+	// 2. Загружаем мотивацию за месяц
+	var mot []models.EngineerMonthlyMotivation
+	s.db.Where("month = ?", monthString).Find(&mot)
+
+	motMap := make(map[int64]models.EngineerMonthlyMotivation)
+	for _, m := range mot {
+		motMap[m.EngineerID] = m
+	}
+
+	// 3. Загружаем выплаты за месяц
+	var pays []models.EngineerPayout
+	s.db.Where("month = ?", monthString).Find(&pays)
+
+	payMap := make(map[int64]models.EngineerPayout)
+	for _, p := range pays {
+		payMap[p.EngineerID] = p
+	}
+
+	var out []PayoutRow
+
+	// 4. Строим строки для каждого инженера
+	for _, e := range engineers {
+
+		// Мотивация или 0
+		motivation := motMap[int64(e.ID)]
+		salary := motivation.TotalMotivationAmount / 2
+
+		// Аванс = половина ЗП
+		advance := salary
+
+		// Выплаты или 0
+		payout := payMap[int64(e.ID)]
+		paid := payout.PaidPrepayment
+
+		// Осталось выплатить
+		left := advance - paid
+		if left < 0 {
+			left = 0
+		}
+
+		canPay := motivation.MotivationPercent >= 20 && left > 0
+		out = append(out, PayoutRow{
+			EngineerID:  int64(e.ID),
+			FirstName:   e.FirstName.String,
+			SecondName:  e.SecondName.String,
+			Month:       month,
+			Salary:      salary,
+			Advance:     advance,
+			PaidAdvance: paid,
+			Left:        left,
+			Total:       salary + advance,
+			CanPay:      canPay,
+		})
+	}
+
+	return out, nil
+}
+
+func (s *EngineerService) PayAdvance(engineerID int64, month string, amount float64) error {
+	monthDate, _ := time.Parse("2006-01", month)
+	monthStart := time.Date(monthDate.Year(), monthDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthString := monthDate.Format("2006-01") + "-01"
+
+	var m models.EngineerMonthlyMotivation
+	if err := s.db.Where("engineer_id = ? AND month = ?", engineerID, monthString).First(&m).Error; err != nil {
+		return errors.New("motivation not found")
+	}
+
+	salary := m.TotalMotivationAmount
+	advance := salary / 2
+
+	var p models.EngineerPayout
+	err := s.db.Where("engineer_id = ? AND month = ?", engineerID, monthString).First(&p).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		p = models.EngineerPayout{
+			EngineerID:     engineerID,
+			Month:          monthStart,
+			Prepayment:     advance,
+			PaidPrepayment: 0,
+		}
+		if err := s.db.Create(&p).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	// проверяем лимит
+	if p.PaidPrepayment+amount > advance+1e-2 {
+		return fmt.Errorf("превышает доступный аванс: максимум %.2f ₽", advance-p.PaidPrepayment)
+	}
+
+	p.PaidPrepayment += amount
+	return s.db.Save(&p).Error
 }

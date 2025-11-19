@@ -14,4 +14,5 @@ type EngineerMotivationView struct {
 	AverageCheck          float64 `json:"average_check"`
 	MotivationPercent     float64 `json:"motivation_percent"`
 	TotalMotivationAmount float64 `json:"total_motivation_amount"`
+	AggregatorPayout      float64 `json:"aggregator_payout"`
 }

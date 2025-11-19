@@ -73,7 +73,7 @@ func NewApp() *App {
 	blacklist := services.NewTokenBlacklist(redisClient)
 	authService := services.NewAuthService(userRepo, blacklist)
 	userService := services.NewUserService(userRepo)
-	engineerService := services.NewEngineerService(engineerRepo)
+	engineerService := services.NewEngineerService(engineerRepo, gormDB)
 
 	telegramService := services.NewTelegramService(bot)
 	callService := services.NewCallService(telphin, callRepo)
@@ -92,8 +92,13 @@ func NewApp() *App {
 	}
 
 	// Хендлеры
+	aggPayoutHandler, cleanup, err := BuildAggregatorPayoutHandler(gormDB)
+	if err != nil {
+		log.Fatal("failed to build aggregator payout handler:", err)
+	}
+	defer cleanup()
 
-	handlers := NewHandlers(bot, userService, engineerService, orderService, authService, dictService, reportService, motivationService, egineerTargetService, engineerMotivationService)
+	handlers := NewHandlers(bot, userService, engineerService, orderService, authService, dictService, reportService, motivationService, egineerTargetService, engineerMotivationService, aggPayoutHandler)
 	httpServer := SetupRouter(handlers)
 
 	return &App{
