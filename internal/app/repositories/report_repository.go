@@ -94,6 +94,7 @@ func (r *ReportRepository) GetCashReports(from, to string) ([]*domain.CashReport
 			o.erp_number AS order_id,
 			o.id AS id,
 			o.engineer_id,
+			CONCAT(COALESCE(e.first_name, ''), ' ', COALESCE(e.second_name, '')) as engineer_name,
 			r.has_repeat, 
 			r.repeat_date,
 			r.repeat_note,
@@ -108,6 +109,7 @@ func (r *ReportRepository) GetCashReports(from, to string) ([]*domain.CashReport
 			o.status as order_status
 		FROM reports r
 		LEFT JOIN orders o ON r.order_id = o.id
+		JOIN engineers e ON r.engineer_id = e.id
 		JOIN engineer_monthly_motivations mm
 			  ON mm.engineer_id = o.engineer_id
 			 AND DATE_FORMAT(o.scheduled_at,'%Y-%m') = DATE_FORMAT(mm.month,'%Y-%m')
@@ -129,6 +131,7 @@ func (r *ReportRepository) GetCashReports(from, to string) ([]*domain.CashReport
 			&cr.OrderID,
 			&cr.ID,
 			&cr.EngineerID,
+			&cr.EngineerName,
 			&cr.HasRepeat,
 			&cr.RepeatDate,
 			&cr.RepeatNote,

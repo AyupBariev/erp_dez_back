@@ -87,7 +87,7 @@ func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 	}
 
 	// Проверяем: активируется ли бонус
-	hasBonus := bonusStep != nil && totalOrderProfit >= bonusStep.MinAmount
+	hasBonus := bonusStep != nil && totalOrderProfit >= bonusStep.MinAmount && monthly.BonusPercent == 0
 
 	if hasBonus {
 		// ✅ Бонус считается отдельно

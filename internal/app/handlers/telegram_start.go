@@ -95,8 +95,20 @@ func (h *TelegramHandler) handleAcceptOrder(query *tgbotapi.CallbackQuery, accep
 		log.Printf("❌ Не удалось удалить сообщение: %v", err)
 	}
 
+	order, err := h.orderService.GetOrderByErpNumber(erpNumber)
+	if err != nil {
+		log.Printf("Ошибка получения заказа: %v", err)
+		h.sendMessage(query.Message.Chat.ID, "Ошибка при получении заказа 😕")
+		return
+	}
+
+	if order.EngineerID == nil {
+		h.sendMessage(query.Message.Chat.ID, "⚠️Заказ был снят с Вас")
+		return
+	}
+
 	// ✅ Обновляем статус заказа
-	if err := h.orderService.EngineerAcceptOrderByErpNumber(erpNumber); err != nil {
+	if err := h.orderService.EngineerAcceptOrderByErpNumber(order); err != nil {
 		log.Printf("Ошибка обновления заказа: %v", err)
 		h.sendMessage(query.Message.Chat.ID, "Ошибка при обновлении заказа 😕")
 		return

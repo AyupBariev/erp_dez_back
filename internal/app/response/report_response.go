@@ -9,6 +9,7 @@ type CashReportResp struct {
 	ID                int64      `json:"id"`
 	OrderID           int64      `json:"order_id"`
 	EngineerID        int64      `json:"engineer_id"`
+	EngineerName      string     `json:"engineer_name"`
 	HasRepeat         bool       `json:"has_repeat"`
 	RepeatDate        *time.Time `json:"repeat_date"`
 	RepeatNote        string     `json:"repeat_note"`
@@ -27,7 +28,7 @@ func FromCashReportList(list []*domain.CashReport) []CashReportResp {
 	out := make([]CashReportResp, 0, len(list))
 	for _, r := range list {
 		out = append(out, CashReportResp{
-			ID: r.ID, OrderID: r.OrderID, EngineerID: r.EngineerID,
+			ID: r.ID, OrderID: r.OrderID, EngineerID: r.EngineerID, EngineerName: r.EngineerName,
 			HasRepeat: r.HasRepeat, RepeatDate: r.RepeatDate, RepeatNote: r.RepeatNote,
 			Description: r.Description, CreatedAt: r.CreatedAt.Format("2006-01-02 15:04"),
 			ToCash: r.ToCash, GaveCash: r.GaveCash, IssuedMoney: r.IssuedMoney, MotivationPercent: int64(r.MotivationPercent),

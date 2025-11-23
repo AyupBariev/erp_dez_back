@@ -136,8 +136,6 @@ func (h *TelegramHandler) showRepeatOrders(chatID int64) {
 	if _, err := h.bot.Send(msg); err != nil {
 		log.Printf("send orders list error: %v", err)
 	}
-
-	h.sendOrderList(chatID, "Повторяющиеся заказы:", orders)
 }
 
 func (h *TelegramHandler) showCashOrders(chatID int64) {

@@ -174,12 +174,7 @@ func (s *OrderService) UnassignOrder(erpNumber int64) (*models.Order, error) {
 	return order, nil
 }
 
-func (s *OrderService) EngineerAcceptOrderByErpNumber(erpNumber int64) error {
-	order, err := s.GetOrderByErpNumber(erpNumber)
-	if err != nil {
-		return err
-	}
-
+func (s *OrderService) EngineerAcceptOrderByErpNumber(order *models.Order) error {
 	// Обновляем статус
 	order.Status = "working"
 	now := time.Now()

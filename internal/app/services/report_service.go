@@ -72,9 +72,18 @@ func (s *ReportService) SubmitReport(req SubmitReportRequest) error {
 		return err
 	}
 
-	if err := s.handleRepeatLogic(req, report, order, hadRepeat); err != nil {
-		return err
+	if !req.HasRepeat {
+		order.Status = "closed_without_repeat"
+	} else {
+		if err := s.handleRepeatLogic(req, report, order, hadRepeat); err != nil {
+			return err
+		}
+		finishPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
+		order.FinishPrice = fmt.Sprintf("%.2f", finishPrice)
+		order.AggregatorPayout = finishPrice * (100 - order.OurPercent) / 100
+		order.Status = "sent_to_cash"
 	}
+
 	// ⛔ мотивацию считаем только если отчёт новый(по первичному или повторному заказу)
 	if isNewReport {
 		if err := s.motivationCalculator.UpdateEngineerMonthlyMotivation(
@@ -146,11 +155,6 @@ func (s *ReportService) createOrUpdateReport(link *models.ReportLink, req Submit
 }
 
 func (s *ReportService) handleRepeatLogic(req SubmitReportRequest, report *models.Report, order *models.Order, hadRepeat bool) error {
-	if !req.HasRepeat {
-		order.Status = "closed_without_repeat"
-		return nil
-	}
-
 	// проверка был ли ранее создан повтор
 	if hadRepeat {
 		if err := s.updateRepeatOrder(report, order.ID); err != nil {
@@ -161,11 +165,6 @@ func (s *ReportService) handleRepeatLogic(req SubmitReportRequest, report *model
 			return err
 		}
 	}
-
-	finishPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
-	order.FinishPrice = fmt.Sprintf("%.2f", finishPrice)
-	order.AggregatorPayout = finishPrice * (100 - order.OurPercent) / 100
-
 	return nil
 }
 

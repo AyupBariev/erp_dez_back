@@ -39,7 +39,7 @@ func (s *TelegramService) sendMessageWithTTL(chatID int64, text string, ttl time
 	// кнопка «Удалить»
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить", "del_"+time.Now().Add(ttl).Format(time.RFC3339)),
+			tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить сообщение", "del_"+time.Now().Add(ttl).Format(time.RFC3339)),
 		),
 	)
 

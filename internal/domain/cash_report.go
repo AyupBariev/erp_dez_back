@@ -6,6 +6,7 @@ type CashReport struct {
 	ID                int64
 	OrderID           int64
 	EngineerID        int64
+	EngineerName      string
 	HasRepeat         bool
 	RepeatDate        *time.Time
 	RepeatNote        string

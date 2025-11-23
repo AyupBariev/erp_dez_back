@@ -125,7 +125,7 @@ func (r *OrderRepository) GetRepeatOrders(chatID int64) ([]models.Order, error) 
 
 	err := withOrderPreloads(r.db).
 		Joins("JOIN engineers e ON e.id = orders.engineer_id").
-		Where("e.telegram_id = ? AND is_repeat = TRUE AND status = 'working'", chatID).
+		Where("e.telegram_id = ? AND repeat_id is NOT NULL AND status = 'working'", chatID).
 		Find(&orders).Error
 
 	return orders, err
