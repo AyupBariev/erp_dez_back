@@ -11,6 +11,7 @@ type EngineerMotivationView struct {
 	OrdersTotalAmount     float64 `json:"orders_total_amount"`
 	RepeatOrdersAmount    float64 `json:"repeat_orders_amount"`
 	GrossProfit           float64 `json:"gross_profit"`
+	NetProfit             float64 `json:"net_profit"`
 	AverageCheck          float64 `json:"average_check"`
 	MotivationPercent     float64 `json:"motivation_percent"`
 	TotalMotivationAmount float64 `json:"total_motivation_amount"`

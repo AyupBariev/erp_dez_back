@@ -29,6 +29,7 @@ func (r *EngineerMotivationRepository) GetByMonth(month time.Time) ([]models.Eng
 			COALESCE(m.orders_total_amount, 0) as orders_total_amount,
 			COALESCE(m.repeat_orders_amount, 0) as repeat_orders_amount,
 			COALESCE(m.gross_profit, 0) as gross_profit,
+			COALESCE(m.gross_profit, 0) - COALESCE(m.total_motivation_amount, 0) as net_profit,
 			COALESCE(m.average_check, 0) as average_check,
 			COALESCE(m.motivation_percent, 0) as motivation_percent,
     		COALESCE(m.total_motivation_amount, 0) as total_motivation_amount,
