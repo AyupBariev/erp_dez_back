@@ -32,7 +32,8 @@ func (r *EngineerMotivationRepository) GetByMonth(month time.Time) ([]models.Eng
 			COALESCE(m.average_check, 0) as average_check,
 			COALESCE(m.motivation_percent, 0) as motivation_percent,
     		COALESCE(m.total_motivation_amount, 0) as total_motivation_amount,
-    		COALESCE(m.aggregator_payout, 0) as aggregator_payout
+    		COALESCE(m.aggregator_payout, 0) as aggregator_payout,
+			COALESCE(m.gross_profit, 0) + COALESCE(m.aggregator_payout, 0) as total_amount
 		`).
 		Joins(`LEFT JOIN engineer_monthly_motivations m ON m.engineer_id = e.id AND m.month = ?`, monthString).
 		Scan(&results).Error
