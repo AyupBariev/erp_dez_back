@@ -130,6 +130,6 @@ func (mc *MotivationCalculator) UpdateEngineerMonthlyMotivation(
 	monthly.MotivationPercent = motivationPercent
 
 	// 💰 Общая сумма мотивации
-	monthly.TotalMotivationAmount = math.Round((monthly.OrdersTotalAmount + monthly.RepeatOrdersAmount) * motivationPercent / 100)
+	monthly.TotalMotivationAmount = math.Round((monthly.AggregatorPayout + monthly.GrossProfit) * motivationPercent / 100)
 	return mc.DB.Save(&monthly).Error
 }
