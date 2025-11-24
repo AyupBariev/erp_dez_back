@@ -19,9 +19,8 @@ func (r *mysqlAggregatorPayoutRepository) GetDayPayouts(from, to string) ([]*dom
 	toTime = toTime.AddDate(0, 0, 1)
 	err := r.db.Raw(`
 SELECT a.name                                     AS aggregator,
-       COUNT(*)                                   AS order_count,
-       SUM(CAST(o.finish_price AS DECIMAL(10,2))) AS orders_sum,
-       AVG(CAST(o.finish_price AS DECIMAL(10,2))) AS avg_check,
+       SUM(CASE WHEN o.repeat_id IS NULL THEN 1 ELSE 0 END) AS order_count,
+       SUM(CAST(o.finish_price AS DECIMAL(10,2))) AS avg_check,
        SUM(o.aggregator_payout)                   AS lead_cost
 FROM aggregators a
 JOIN orders o ON a.id = o.aggregator_id
