@@ -1,7 +1,7 @@
 package services
 
 import (
-	"erp/internal/app/models"
+	"erp/internal/app/dto"
 	"erp/internal/app/repositories"
 )
 
@@ -16,16 +16,16 @@ func NewDictionaryService(dictRepo *repositories.DictionaryRepository) *Dictiona
 }
 
 // Универсальные методы для всех типов словарей
-func (s *DictionaryService) GetAll(tableName string) ([]models.BaseDictionary, error) {
+func (s *DictionaryService) GetAll(tableName string) ([]dto.BaseDictionary, error) {
 	return s.dictRepo.GetAll(tableName)
 }
 
-func (s *DictionaryService) GetByID(tableName string, id int) (*models.BaseDictionary, error) {
+func (s *DictionaryService) GetByID(tableName string, id int) (*dto.BaseDictionary, error) {
 	return s.dictRepo.GetByID(tableName, id)
 }
 
-func (s *DictionaryService) Create(tableName string, req models.CreateDictionaryRequest) (*models.BaseDictionary, error) {
-	item := &models.BaseDictionary{
+func (s *DictionaryService) Create(tableName string, req dto.CreateDictionaryRequest) (*dto.BaseDictionary, error) {
+	item := &dto.BaseDictionary{
 		Name: req.Name,
 	}
 
@@ -37,7 +37,7 @@ func (s *DictionaryService) Create(tableName string, req models.CreateDictionary
 	return item, nil
 }
 
-func (s *DictionaryService) Update(tableName string, id int, req models.UpdateDictionaryRequest) (*models.BaseDictionary, error) {
+func (s *DictionaryService) Update(tableName string, id int, req dto.UpdateDictionaryRequest) (*dto.BaseDictionary, error) {
 	item, err := s.dictRepo.GetByID(tableName, id)
 	if err != nil {
 		return nil, err

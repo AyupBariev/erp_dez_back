@@ -20,7 +20,7 @@ type EngineerMonthlyMotivation struct {
 	// 🔹 Разделение мотивации
 	BaseMotivationPercent float64 `gorm:"not null;default:0"` // текущий процент по мотивационной сетке
 	BonusPercent          float64 `gorm:"not null;default:0"` // бонусный процент, если достигнут бонус
-	MotivationPercent     float64 `gorm:"not null;default:0"` // итоговый % мотивации (активный для расчета)
+	MotivationPercent     uint    `gorm:"not null;default:0"` // итоговый % мотивации (активный для расчета)
 	TotalMotivationAmount float64 `gorm:"not null;default:0"` // общая сумма мотивации за месяц
 
 	// 🔹 Учет сторонних выплат

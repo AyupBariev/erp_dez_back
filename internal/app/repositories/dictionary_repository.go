@@ -2,7 +2,8 @@ package repositories
 
 import (
 	"database/sql"
-	"erp/internal/app/models"
+	"erp/internal/app/dto"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -17,9 +18,24 @@ func NewDictionaryRepository(db *sql.DB) *DictionaryRepository {
 	}
 }
 
+var allowedTables = map[string]bool{
+	"aggregators": true,
+	"problems":    true,
+}
+
+func validateTable(table string) error {
+	if !allowedTables[table] {
+		return errors.New("invalid dictionary type")
+	}
+	return nil
+}
+
 // Универсальные методы для работы с любой таблицей словарей
-func (r *DictionaryRepository) GetAll(tableName string) ([]models.BaseDictionary, error) {
-	var items []models.BaseDictionary // убрать *
+func (r *DictionaryRepository) GetAll(tableName string) ([]dto.BaseDictionary, error) {
+	var items []dto.BaseDictionary // убрать *
+	if err := validateTable(tableName); err != nil {
+		return nil, err
+	}
 
 	query := fmt.Sprintf(`SELECT id, name, created_at, updated_at FROM %s ORDER BY name`, tableName)
 	rows, err := r.db.Query(query)
@@ -29,7 +45,7 @@ func (r *DictionaryRepository) GetAll(tableName string) ([]models.BaseDictionary
 	defer rows.Close()
 
 	for rows.Next() {
-		var item models.BaseDictionary // убрать *
+		var item dto.BaseDictionary // убрать *
 		var dbCreatedAt time.Time
 		var dbUpdatedAt sql.NullTime
 
@@ -50,10 +66,13 @@ func (r *DictionaryRepository) GetAll(tableName string) ([]models.BaseDictionary
 	return items, nil
 }
 
-func (r *DictionaryRepository) GetByID(tableName string, id int) (*models.BaseDictionary, error) {
-	var item models.BaseDictionary // убрать *
+func (r *DictionaryRepository) GetByID(tableName string, id int) (*dto.BaseDictionary, error) {
+	var item dto.BaseDictionary // убрать *
 	var dbCreatedAt time.Time
 	var dbUpdatedAt sql.NullTime
+	if err := validateTable(tableName); err != nil {
+		return nil, err
+	}
 
 	query := fmt.Sprintf(`SELECT id, name, created_at, updated_at FROM %s WHERE id = ?`, tableName)
 	err := r.db.QueryRow(query, id).Scan(
@@ -76,7 +95,10 @@ func (r *DictionaryRepository) GetByID(tableName string, id int) (*models.BaseDi
 	return &item, nil // возвращаем указатель
 }
 
-func (r *DictionaryRepository) Create(tableName string, item *models.BaseDictionary) error {
+func (r *DictionaryRepository) Create(tableName string, item *dto.BaseDictionary) error {
+	if err := validateTable(tableName); err != nil {
+		return err
+	}
 	query := fmt.Sprintf(`INSERT INTO %s (name) VALUES (?)`, tableName)
 	result, err := r.db.Exec(query, item.Name)
 	if err != nil {
@@ -101,13 +123,19 @@ func (r *DictionaryRepository) Create(tableName string, item *models.BaseDiction
 	return nil
 }
 
-func (r *DictionaryRepository) Update(tableName string, item *models.BaseDictionary) error {
+func (r *DictionaryRepository) Update(tableName string, item *dto.BaseDictionary) error {
+	if err := validateTable(tableName); err != nil {
+		return err
+	}
 	query := fmt.Sprintf(`UPDATE %s SET name = ?, updated_at = NOW() WHERE id = ?`, tableName)
 	_, err := r.db.Exec(query, item.Name, item.ID)
 	return err
 }
 
 func (r *DictionaryRepository) Delete(tableName string, id int) error {
+	if err := validateTable(tableName); err != nil {
+		return err
+	}
 	query := fmt.Sprintf(`DELETE FROM %s WHERE id = ?`, tableName)
 	_, err := r.db.Exec(query, id)
 	return err

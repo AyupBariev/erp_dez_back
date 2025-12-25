@@ -11,16 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type EngineerResponse struct {
-	ID         int64   `json:"id"`
-	Name       string  `json:"name"`
-	Username   string  `json:"username"`
-	Phone      *string `json:"phone,omitempty"`
-	TelegramID int64   `json:"telegram_id"`
-	IsApproved bool    `json:"is_approved"`
-	IsWorking  bool    `json:"is_working"`
-}
-
 type EngineerHandler struct {
 	engineerService *services.EngineerService
 }

@@ -29,7 +29,7 @@ func SetupRouter(h Handlers) *gin.Engine {
 			//users.DELETE("/:id", h.User.DeleteUser) // DELETE /api/users/:id
 		}
 
-		// Orders group
+		// ORDERS
 		orders := prefixApi.Group("/orders")
 		{
 			orders.POST("/", h.Order.CreateOrderHandler) // POST /api/orders
@@ -41,15 +41,29 @@ func SetupRouter(h Handlers) *gin.Engine {
 			orders.POST("/assign", h.Order.AssignOrderHandler)
 			orders.POST("/unassign", h.Order.UnAssignOrderHandler)
 		}
+
+		// REPORTS
 		reports := prefixApi.Group("/reports")
 		{
 			reports.GET("/cash", h.Report.ListCashReports) // ?from=..&to=..
 			reports.POST("/cash/:erp_number/receive", h.Report.ReceiveCash)
 		}
 
+		//REPEAT REQUEST
+		repeat := prefixApi.Group("/repeat-requests")
+		{
+			repeat.GET("/", h.RepeatRequest.List)
+			repeat.POST("/:id/confirm", h.RepeatRequest.Confirm)
+		}
+
 		agg := prefixApi.Group("/aggregator")
 		{
 			agg.GET("/daily", h.AggregatorPayout.ListDayPayouts)
+		}
+
+		profit := prefixApi.Group("/profit")
+		{
+			profit.GET("/", h.Profit.GetProfit)
 		}
 
 		engineers := prefixApi.Group("/engineers")

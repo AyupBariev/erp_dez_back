@@ -8,6 +8,7 @@ import (
 	"erp/internal/domain"
 	"fmt"
 	"gorm.io/gorm"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -16,6 +17,7 @@ import (
 type ReportService struct {
 	reportRepo           *repositories.ReportRepository
 	orderRepo            *repositories.OrderRepository
+	repeatRequestService *RepeatRequestService
 	motivationCalculator *MotivationCalculator
 }
 
@@ -28,9 +30,18 @@ type SubmitReportRequest struct {
 	Description string  `json:"description,omitempty"`
 }
 
-func NewReportService(reportRepo *repositories.ReportRepository, orderRepo *repositories.OrderRepository, db *gorm.DB) *ReportService {
-	return &ReportService{reportRepo: reportRepo, orderRepo: orderRepo, motivationCalculator: &MotivationCalculator{DB: db}}
-
+func NewReportService(
+	reportRepo *repositories.ReportRepository,
+	orderRepo *repositories.OrderRepository,
+	repeatRequestService *RepeatRequestService,
+	db *gorm.DB,
+) *ReportService {
+	return &ReportService{
+		reportRepo:           reportRepo,
+		orderRepo:            orderRepo,
+		repeatRequestService: repeatRequestService,
+		motivationCalculator: &MotivationCalculator{DB: db},
+	}
 }
 
 func (s *ReportService) GenerateReportLink(orderID, engineerID int64) (string, error) {
@@ -62,7 +73,7 @@ func (s *ReportService) SubmitReport(req SubmitReportRequest) error {
 		return err
 	}
 
-	report, isNewReport, hadRepeat, err := s.createOrUpdateReport(link, req)
+	report, err := s.createOrUpdateReport(link, req)
 	if err != nil {
 		return err
 	}
@@ -75,30 +86,55 @@ func (s *ReportService) SubmitReport(req SubmitReportRequest) error {
 	if !req.HasRepeat {
 		order.Status = "closed_without_repeat"
 	} else {
-		if err := s.handleRepeatLogic(req, report, order, hadRepeat); err != nil {
+		//if err := s.handleRepeatLogic(req, report, order, hadRepeat); err != nil {
+		//	return err
+		//}
+		if req.RepeatDate != nil {
+			scheduledAt, err := time.ParseInLocation(
+				"2006-01-02T15:04",
+				*req.RepeatDate,
+				time.Local,
+			)
+			if err != nil {
+				return err
+			}
+			report.RepeatDate = &scheduledAt
+		}
+		err := s.repeatRequestService.Create(
+			order.ID,
+			uint(report.EngineerID),
+			req.Description,
+			*report.RepeatDate,
+		)
+		if err != nil {
 			return err
 		}
-		finishPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
-		order.FinishPrice = fmt.Sprintf("%.2f", finishPrice)
-		order.AggregatorPayout = finishPrice * (100 - order.OurPercent) / 100
+		totalOrderPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
+		order.FinishPrice = fmt.Sprintf("%.2f", totalOrderPrice)
+		order.AggregatorPayout = totalOrderPrice * (100 - order.OurPercent) / 100
 		order.Status = "sent_to_cash"
 	}
 
-	// ⛔ мотивацию считаем только если отчёт новый(по первичному или повторному заказу)
-	if isNewReport {
-		if err := s.motivationCalculator.UpdateEngineerMonthlyMotivation(
-			report.EngineerID,
-			req.FinishPrice,
-			order.OurPercent,
-			order.RepeatID != nil,
-		); err != nil {
-			return err
-		}
+	// 5️⃣ Вычисление grossProfit
+	totalOrderPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
+	grossProfit := math.Round(totalOrderPrice * order.OurPercent / 100)
+	order.FinishPrice = fmt.Sprintf("%.2f", totalOrderPrice)
+	order.AggregatorPayout = totalOrderPrice - grossProfit
+
+	isOrderRepeat := order.RepeatID != nil
+	// 6️⃣ Расчет мотивации отчета
+	if err := s.motivationCalculator.CalculateReportMotivation(report, totalOrderPrice, isOrderRepeat); err != nil {
+		return err
 	}
 
-	finishPrice, _ := strconv.ParseFloat(req.FinishPrice, 64)
-	order.FinishPrice = fmt.Sprintf("%.2f", finishPrice)
-	order.AggregatorPayout = finishPrice * (100 - order.OurPercent) / 100
+	if err := s.reportRepo.Update(report); err != nil {
+		return err
+	}
+
+	// 7️⃣ Обновление месячного агрегата
+	if err := s.motivationCalculator.RecalculateEngineerMonthlyMotivation(report); err != nil {
+		return err
+	}
 	return s.orderRepo.UpdateOrder(order)
 }
 
@@ -115,11 +151,8 @@ func (s *ReportService) validateAndGetLink(token string) (*models.ReportLink, er
 	return link, nil
 }
 
-func (s *ReportService) createOrUpdateReport(link *models.ReportLink, req SubmitReportRequest) (*models.Report, bool, bool, error) {
+func (s *ReportService) createOrUpdateReport(link *models.ReportLink, req SubmitReportRequest) (*models.Report, error) {
 	report, err := s.reportRepo.GetByOrderID(strconv.FormatInt(link.OrderID, 10))
-
-	isNewReport := false
-	hadRepeat := false
 
 	if err != nil || report == nil {
 		// создаём новый
@@ -130,9 +163,7 @@ func (s *ReportService) createOrUpdateReport(link *models.ReportLink, req Submit
 			RepeatNote:  req.RepeatNote,
 			Description: req.Description,
 		}
-		isNewReport = true
 	} else {
-		hadRepeat = report.HasRepeat
 		// обновляем существующий
 		report.HasRepeat = req.HasRepeat
 		report.RepeatNote = req.RepeatNote
@@ -142,16 +173,16 @@ func (s *ReportService) createOrUpdateReport(link *models.ReportLink, req Submit
 	if req.RepeatDate != nil {
 		scheduledAt, err := time.ParseInLocation("2006-01-02T15:04", *req.RepeatDate, time.Local)
 		if err != nil {
-			return nil, false, hadRepeat, err
+			return nil, err
 		}
 		report.RepeatDate = &scheduledAt
 	}
 
 	if err := s.reportRepo.SaveReport(report); err != nil {
-		return nil, false, hadRepeat, err
+		return nil, err
 	}
 
-	return report, isNewReport, hadRepeat, nil
+	return report, nil
 }
 
 func (s *ReportService) handleRepeatLogic(req SubmitReportRequest, report *models.Report, order *models.Order, hadRepeat bool) error {
@@ -161,39 +192,40 @@ func (s *ReportService) handleRepeatLogic(req SubmitReportRequest, report *model
 			return err
 		}
 	} else {
-		if err := s.createRepeatOrder(report, order); err != nil {
-			return err
-		}
+		//if err := s.createRepeatOrder(report, order); err != nil {
+		//	return err
+		//}
 	}
 	return nil
 }
 
-func (s *ReportService) createRepeatOrder(report *models.Report, orig *models.Order) error {
-
-	nextErpNumber, err := s.orderRepo.GetNextERPNumber()
-	if err != nil {
-		return err
-	}
-
-	// Создаём новый заказ (повтор)
-	newOrder := *orig
-	repeatID := orig.ID
-	newOrder.RepeatID = &repeatID
-	newOrder.RepeatedBy = "engineer"
-	newOrder.RepeatDescription = report.RepeatNote
-	newOrder.ERPNumber = nextErpNumber
-	newOrder.Status = "working"
-
-	newOrder.ID = 0
-	newOrder.Aggregator = nil
-	newOrder.Problem = nil
-	newOrder.CreatedAt = time.Time{}
-	newOrder.UpdatedAt = time.Time{}
-
-	newOrder.ScheduledAt = *report.RepeatDate
-
-	return s.orderRepo.Create(&newOrder)
-}
+//
+//func (s *ReportService) createRepeatOrder(report *models.Report, orig *models.Order) error {
+//
+//	nextErpNumber, err := s.orderRepo.GetNextERPNumber()
+//	if err != nil {
+//		return err
+//	}
+//
+//	// Создаём новый заказ (повтор)
+//	newOrder := *orig
+//	//repeatID := orig.ID
+//	//newOrder.RepeatID = &repeatID
+//	newOrder.RepeatedBy = "engineer"
+//	newOrder.RepeatDescription = report.RepeatNote
+//	newOrder.ERPNumber = nextErpNumber
+//	newOrder.Status = "working"
+//
+//	newOrder.ID = 0
+//	newOrder.Aggregator = nil
+//	newOrder.Problem = nil
+//	newOrder.CreatedAt = time.Time{}
+//	newOrder.UpdatedAt = time.Time{}
+//
+//	newOrder.ScheduledAt = *report.RepeatDate
+//
+//	return s.orderRepo.Create(&newOrder)
+//}
 
 func (s *ReportService) updateRepeatOrder(report *models.Report, RepeatID uint) error {
 

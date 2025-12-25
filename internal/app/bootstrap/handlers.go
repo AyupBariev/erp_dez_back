@@ -17,9 +17,11 @@ type Handlers struct {
 	Order              *OrderHandler
 	DictHandler        *DictionaryHandler
 	Report             *ReportHandler
+	RepeatRequest      *RepeatRequestHandler
 	Motivation         *MotivationHandler
 	EngineerTarget     *EngineerTargetHandler
 	EngineerMotivation *EngineerMotivationHandler
+	Profit             *ProfitHandler
 	AggregatorPayout   *cleanhandler.AggregatorPayoutHandler
 }
 
@@ -31,6 +33,7 @@ func NewHandlers(
 	authService *services.AuthService,
 	dictService *services.DictionaryService,
 	reportService *services.ReportService,
+	repeatRequestService *services.RepeatRequestService,
 	motivationService *services.MotivationService,
 	engineerTargetService *services.EngineerTargetService,
 	engineerMotivationService *services.EngineerMotivationService,
@@ -44,11 +47,12 @@ func NewHandlers(
 	orderHandler := NewOrderHandler(orderService, engineerService)
 	dictHandler := NewDictionaryHandler(dictService)
 	reportHandler := NewReportHandler(reportService, orderService, engineerService)
+	repeatRequestHandler := NewRepeatRequestHandler(repeatRequestService)
 
 	motivationHandler := NewMotivationHandler(motivationService)
 	engineerTargetHandler := NewEngineerTargetHandler(engineerTargetService)
 	engineerMotivationHandler := NewEngineerMotivationHandler(engineerMotivationService)
-
+	profitHandle := NewProfitHandler(engineerMotivationService)
 	return Handlers{
 		Telegram:           telegramHandler,
 		Auth:               authHandler,
@@ -58,9 +62,11 @@ func NewHandlers(
 		Order:              orderHandler,
 		DictHandler:        dictHandler,
 		Report:             reportHandler,
+		RepeatRequest:      repeatRequestHandler,
 		Motivation:         motivationHandler,
 		EngineerTarget:     engineerTargetHandler,
 		EngineerMotivation: engineerMotivationHandler,
+		Profit:             profitHandle,
 		AggregatorPayout:   aggPayoutHandler,
 	}
 }

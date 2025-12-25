@@ -142,6 +142,77 @@ func (s *EngineerService) ApproveEngineer(engineerID int64) (*models.Engineer, e
 	return s.engineerRepo.ApproveByID(engineerID)
 }
 
+func (s *EngineerService) GetPayoutsByPeriod(from, to string) ([]PayoutRow, error) {
+	start, err := time.Parse("2006-01-02", from)
+	if err != nil {
+		return nil, err
+	}
+
+	end, err := time.Parse("2006-01-02", to)
+	if err != nil {
+		return nil, err
+	}
+
+	end = end.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+
+	// 1. инженеры
+	var engineers []models.Engineer
+	if err := s.db.Find(&engineers).Error; err != nil {
+		return nil, err
+	}
+
+	// 2. мотивация за период
+	var motivations []models.EngineerMonthlyMotivation
+	s.db.
+		Where("month >= ? AND month <= ?", start, end).
+		Find(&motivations)
+
+	// 3. выплаты за период
+	var payouts []models.EngineerPayout
+	s.db.
+		Where("created_at BETWEEN ? AND ?", start, end).
+		Find(&payouts)
+
+	// агрегация
+	motMap := make(map[int64]float64)
+	for _, m := range motivations {
+		motMap[m.EngineerID] += m.TotalMotivationAmount
+	}
+
+	payMap := make(map[int64]float64)
+	for _, p := range payouts {
+		payMap[p.EngineerID] += p.PaidPrepayment
+	}
+
+	var out []PayoutRow
+
+	for _, e := range engineers {
+		totalMot := motMap[int64(e.ID)]
+		salary := totalMot / 2
+		advance := salary
+		paid := payMap[int64(e.ID)]
+
+		left := advance - paid
+		if left < 0 {
+			left = 0
+		}
+
+		out = append(out, PayoutRow{
+			EngineerID:  int64(e.ID),
+			FirstName:   e.FirstName.String,
+			SecondName:  e.SecondName.String,
+			Salary:      salary,
+			Advance:     advance,
+			PaidAdvance: paid,
+			Left:        left,
+			Total:       salary + advance,
+			CanPay:      left > 0,
+		})
+	}
+
+	return out, nil
+}
+
 func (s *EngineerService) GetMonthPayouts(month string) ([]PayoutRow, error) {
 	monthDate, _ := time.Parse("2006-01", month)
 	monthStart := time.Date(monthDate.Year(), monthDate.Month(), 1, 0, 0, 0, 0, time.UTC)

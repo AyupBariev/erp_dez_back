@@ -5,11 +5,11 @@ import (
 	"erp/internal/app/models"
 	"erp/internal/app/response"
 	"erp/internal/app/services"
+	"erp/internal/utils"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 type OrderHandler struct {
@@ -62,14 +62,32 @@ func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
 		Status:       req.Status,
 	}
 
-	// Обработка scheduled_at
 	if req.ScheduledAt != "" {
-		scheduledAt, err := time.ParseInLocation("2006-01-02T15:04", req.ScheduledAt, time.Local)
+		scheduledAt, err := utils.ParseScheduledAt(req.ScheduledAt)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scheduled_at format, use YYYY-MM-DDTHH:MM"})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "invalid scheduled_at format, use YYYY-MM-DDTHH:MM or YYYY-MM-DD HH:MM",
+			})
 			return
 		}
 		order.ScheduledAt = scheduledAt.UTC()
+	}
+
+	if req.RepeatID != nil {
+		order.RepeatID = req.RepeatID
+		order.RepeatedBy = "curator"
+	} else {
+		var parentOrderID *uint64 = nil
+		if req.RepeatErpNumber != nil {
+			parentOrder, err := h.OrderService.GetOrderByErpNumber(*req.RepeatErpNumber)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Заказ не существует"})
+				return
+			}
+			id64 := uint64(parentOrder.ID)
+			parentOrderID = &id64
+		}
+		order.RepeatID = parentOrderID
 	}
 
 	// Обработка engineer_id и статуса
@@ -78,8 +96,6 @@ func (h *OrderHandler) CreateOrderHandler(c *gin.Context) {
 	} else {
 		order.EngineerID = nil
 	}
-
-	order.RepeatID = nil
 
 	if err := h.OrderService.CreateOrder(order); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

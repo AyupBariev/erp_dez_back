@@ -1,85 +1,48 @@
 package repositories
 
 import (
-	"database/sql"
 	"erp/internal/app/models"
 	"erp/internal/domain"
-	"erp/internal/pkg/logger"
 	"fmt"
+	"gorm.io/gorm"
 	"time"
 )
 
 type ReportRepository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-func NewReportRepository(db *sql.DB) *ReportRepository {
+func NewReportRepository(db *gorm.DB) *ReportRepository {
 	return &ReportRepository{db: db}
 }
 
 func (r *ReportRepository) SaveReportLink(link *models.ReportLink) error {
-	_, err := r.db.Exec(`
-		INSERT INTO report_links (token, order_id, engineer_id, expires_at, created_at)
-		VALUES (?, ?, ?, ?, NOW())`,
-		link.Token, link.OrderID, link.EngineerID, link.ExpiresAt,
-	)
-
-	if err != nil {
-		logger.LogError("Ошибка сохранения report_link.", err)
-	}
-	return err
+	return r.db.Create(link).Error
 }
 
 func (r *ReportRepository) GetByToken(token string) (*models.ReportLink, error) {
-	row := r.db.QueryRow(`
-		SELECT id, order_id, engineer_id, token, expires_at, created_at
-		FROM report_links
-		WHERE token = ?`, token,
-	)
-
 	var link models.ReportLink
-	if err := row.Scan(&link.ID, &link.OrderID, &link.EngineerID, &link.Token, &link.ExpiresAt, &link.CreatedAt); err != nil {
+	if err := r.db.Where("token = ?", token).First(&link).Error; err != nil {
 		return nil, err
 	}
 	return &link, nil
 }
 
 func (r *ReportRepository) SaveReport(report *models.Report) error {
-	if report.ID == 0 {
-		if err := r.Create(report); err != nil {
-			return fmt.Errorf("failed to create report: %w", err)
-		}
-	} else {
-		if err := r.Update(report); err != nil {
-			return fmt.Errorf("failed to update report: %w", err)
-		}
-	}
-	return nil
+	return r.db.Save(report).Error
 }
 
 func (r *ReportRepository) Create(report *models.Report) error {
-	_, err := r.db.Exec(`
-		INSERT INTO reports (order_id, engineer_id, has_repeat, repeat_date, repeat_note, description)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		report.OrderID, report.EngineerID, report.HasRepeat, report.RepeatDate, report.RepeatNote, report.Description,
-	)
-	return err
+	return r.db.Create(report).Error
 }
 
 func (r *ReportRepository) Update(report *models.Report) error {
-	_, err := r.db.Exec(`
-		UPDATE reports SET has_repeat = ?, repeat_date = ?, repeat_note = ?, description = ?
-		WHERE id = ?`,
-		report.HasRepeat, report.RepeatDate, report.RepeatNote, report.Description, report.ID,
-	)
-	return err
+	return r.db.Save(report).Error
 }
 
 func (r *ReportRepository) GetByOrderID(orderID string) (*models.Report, error) {
-	row := r.db.QueryRow(`
-		SELECT id, order_id, engineer_id, has_repeat, repeat_date, repeat_note, description FROM reports WHERE order_id = ?`, orderID)
 	var report models.Report
-	if err := row.Scan(&report.ID, &report.OrderID, &report.EngineerID, &report.HasRepeat, &report.RepeatDate, &report.RepeatNote, &report.Description); err != nil {
+	if err := r.db.Where("order_id = ?", orderID).First(&report).Error; err != nil {
 		return nil, err
 	}
 	return &report, nil
@@ -89,8 +52,11 @@ func (r *ReportRepository) GetCashReports(from, to string) ([]*domain.CashReport
 	fromTime, _ := time.Parse("2006-01-02", from)
 	toTime, _ := time.Parse("2006-01-02", to)
 	toTime = toTime.AddDate(0, 0, 1)
-	rows, err := r.db.Query(`
-		SELECT
+
+	var reports []*domain.CashReport
+	err := r.db.
+		Table("reports r").
+		Select(`
 			o.erp_number AS order_id,
 			o.id AS id,
 			o.engineer_id,
@@ -107,97 +73,58 @@ func (r *ReportRepository) GetCashReports(from, to string) ([]*domain.CashReport
 			mm.total_motivation_amount * 0.5 AS prepayment,
 			mm.total_motivation_amount * 0.5 AS salary,
 			o.status as order_status
-		FROM reports r
-		LEFT JOIN orders o ON r.order_id = o.id
-		JOIN engineers e ON r.engineer_id = e.id
-		JOIN engineer_monthly_motivations mm
-			  ON mm.engineer_id = o.engineer_id
-			 AND DATE_FORMAT(o.scheduled_at,'%Y-%m') = DATE_FORMAT(mm.month,'%Y-%m')
-		WHERE o.status in ('sent_to_cash', 'closed_finally') AND o.scheduled_at BETWEEN ? AND ?
-		ORDER BY o.scheduled_at DESC
-
-	`, fromTime, toTime)
+		`).
+		Joins("LEFT JOIN orders o ON r.order_id = o.id").
+		Joins("JOIN engineers e ON r.engineer_id = e.id").
+		Joins("JOIN engineer_monthly_motivations mm ON mm.engineer_id = o.engineer_id AND DATE_FORMAT(o.scheduled_at,'%Y-%m') = DATE_FORMAT(mm.month,'%Y-%m')").
+		Where("o.status in (?) AND o.scheduled_at BETWEEN ? AND ?", []string{"sent_to_cash", "closed_finally"}, fromTime, toTime).
+		Order("o.scheduled_at DESC").
+		Scan(&reports).Error
 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var reports []*domain.CashReport
-
-	for rows.Next() {
-		var cr domain.CashReport
-		err := rows.Scan(
-			&cr.OrderID,
-			&cr.ID,
-			&cr.EngineerID,
-			&cr.EngineerName,
-			&cr.HasRepeat,
-			&cr.RepeatDate,
-			&cr.RepeatNote,
-			&cr.Description,
-			&cr.CreatedAt,
-			&cr.ToCash,
-			&cr.GaveCash,
-			&cr.IssuedMoney,
-			&cr.MotivationPercent,
-			&cr.Prepayment,
-			&cr.Salary,
-			&cr.OrderStatus,
-		)
-		if err != nil {
-			return nil, err
-		}
-		reports = append(reports, &cr)
-	}
-
 	return reports, nil
 }
 
-func (r *ReportRepository) MarkIssued(orderId int64, gaveCash float64, issuedMoney float64, comment string) error {
-	_, err := r.db.Exec(`
-		UPDATE reports
-		SET gave_cash = gave_cash + ? , issued_money = issued_money + ?, description = CONCAT_WS('\n', description, ?)
-		WHERE order_id = ?
-	`, gaveCash, issuedMoney, comment, orderId)
-
-	return err
+func (r *ReportRepository) MarkIssued(orderID int64, gaveCash float64, issuedMoney float64, comment string) error {
+	return r.db.Model(&models.Report{}).
+		Where("order_id = ?", orderID).
+		Updates(map[string]interface{}{
+			"gave_cash":    gorm.Expr("gave_cash + ?", gaveCash),
+			"issued_money": gorm.Expr("issued_money + ?", issuedMoney),
+			"description":  gorm.Expr("CONCAT_WS('\n', description, ?)", comment),
+		}).Error
 }
 
 // CheckMotivationPrepaymentLimit report_repository.go
 // Проверяем право приёма денег по мотивационному ограничению.
 // Возвращает ошибку, если ограничение НЕ пройдено.
 func (r *ReportRepository) CheckMotivationPrepaymentLimit(orderID int64) error {
-	var info struct {
+	type Info struct {
 		MotivationPercent     float64
 		TotalMotivationAmount float64
 		PaidPrepayment        float64
 	}
 
-	err := r.db.QueryRow(`
-	SELECT
-		mm.motivation_percent,
-		mm.total_motivation_amount,
-		COALESCE(SUM(ep.paid_prepayment), 0) AS paid_prepayment
-	FROM orders o
-	JOIN engineer_monthly_motivations mm
-		ON mm.engineer_id = o.engineer_id
-		AND DATE_FORMAT(o.scheduled_at, '%Y-%m') = DATE_FORMAT(mm.month, '%Y-%m')
-	LEFT JOIN engineer_payouts ep
-		ON ep.engineer_id = o.engineer_id
-	WHERE o.id = ?
-	GROUP BY mm.motivation_percent, mm.total_motivation_amount
-`, orderID).Scan(&info.MotivationPercent, &info.TotalMotivationAmount, &info.PaidPrepayment)
+	var info Info
+	err := r.db.Table("orders o").
+		Select("mm.motivation_percent, mm.total_motivation_amount, COALESCE(SUM(ep.paid_prepayment), 0) AS paid_prepayment").
+		Joins("JOIN engineer_monthly_motivations mm ON mm.engineer_id = o.engineer_id AND DATE_FORMAT(o.scheduled_at,'%Y-%m') = DATE_FORMAT(mm.month,'%Y-%m')").
+		Joins("LEFT JOIN engineer_payouts ep ON ep.engineer_id = o.engineer_id").
+		Where("o.id = ?", orderID).
+		Group("mm.motivation_percent, mm.total_motivation_amount").
+		Scan(&info).Error
 
 	if err != nil {
 		return fmt.Errorf("failed to check motivation limit: %w", err)
 	}
 
-	// само правило
 	if info.MotivationPercent >= 20 &&
 		info.PaidPrepayment <= info.TotalMotivationAmount*0.5 {
 		return fmt.Errorf("prepayment limit exceeded: paid %.2f, allowed %.2f (50%% of %.2f)",
 			info.PaidPrepayment, info.TotalMotivationAmount*0.5, info.TotalMotivationAmount)
 	}
+
 	return nil
 }

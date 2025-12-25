@@ -63,13 +63,14 @@ func (h *EngineerTargetHandler) UpdateTarget(c *gin.Context) {
 }
 
 func (h *EngineerHandler) GetMonthPayouts(c *gin.Context) {
-	month := c.Query("month")
-	if month == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "month required YYYY-MM"})
+	from := c.Query("from")
+	to := c.Query("to")
+	if from == "" || to == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "from and to required"})
 		return
 	}
 
-	rows, err := h.engineerService.GetMonthPayouts(month)
+	rows, err := h.engineerService.GetPayoutsByPeriod(from, to)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

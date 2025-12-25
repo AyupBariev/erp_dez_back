@@ -23,7 +23,6 @@ func (s *OrderService) CreateOrder(order *models.Order) error {
 	if err != nil {
 		return err
 	}
-
 	order.ERPNumber = nextErpNumber
 	if order.Status == "" {
 		if order.EngineerID != nil {
@@ -33,11 +32,20 @@ func (s *OrderService) CreateOrder(order *models.Order) error {
 		}
 	}
 
-	if order.EngineerID != nil {
-		go s.notification.NotifyEngineerNewOrder(order, order.Engineer)
+	newOrder, createOrderErr := s.orderRepo.Create(order)
+	if createOrderErr != nil {
+		return createOrderErr
 	}
 
-	return s.orderRepo.Create(order)
+	if newOrder.EngineerID != nil {
+		err = s.orderRepo.LoadRelations(newOrder)
+		if err != nil {
+			return err
+		}
+		go s.notification.NotifyEngineerNewOrder(newOrder, newOrder.Engineer)
+	}
+
+	return nil
 }
 
 func (s *OrderService) Update(order *models.Order, req dto.UpdateOrderRequest) (*models.Order, error) {

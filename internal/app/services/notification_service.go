@@ -31,20 +31,23 @@ func (s *NotificationService) NotifyEngineerNewOrder(order *models.Order, eng *m
 	}
 
 	text := formatOrderMessage(order)
-
-	// Создаем inline-клавиатуру с кнопками
-	buttons := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Принять", fmt.Sprintf("accept_%d", order.ERPNumber)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("😄 С удовольствием принять", fmt.Sprintf("accept_happy_%d", order.ERPNumber)),
-		),
-	)
-
-	// Отправляем сообщение через TelegramHandler
 	id := eng.GetTelegramID()
-	s.Telegram.SendMessageWithKeyboard(*id, text, buttons)
+
+	if order.RepeatID != nil {
+		s.Telegram.sendMessage(*id, text)
+	} else {
+		// Создаем inline-клавиатуру с кнопками
+		buttons := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("✅ Принять", fmt.Sprintf("accept_%d", order.ERPNumber)),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("😄 С удовольствием принять", fmt.Sprintf("accept_happy_%d", order.ERPNumber)),
+			),
+		)
+		// Отправляем сообщение через TelegramHandler
+		s.Telegram.SendMessageWithKeyboard(*id, text, buttons)
+	}
 
 	//telphin
 	//n.Call.ScheduleEngineerCall(engineerID, order)
@@ -97,8 +100,13 @@ func formatOrderMessage(order *models.Order) string {
 		price = "—"
 	}
 
+	titleMessage := fmt.Sprintf("*Новый заказ № %d*", order.ERPNumber)
+	if order.RepeatID != nil {
+		titleMessage = fmt.Sprintf("*Назначен повтор № %d*", order.ERPNumber)
+	}
+
 	return fmt.Sprintf(
-		"📦 *Новый заказ № %d*\n\n"+
+		"📦 %s\n\n"+
 			"📅 Дата и время: %s\n"+
 			"🔧 Проблема: %s\n\n"+
 			"🏠 Адрес: %s\n"+
@@ -106,7 +114,7 @@ func formatOrderMessage(order *models.Order) string {
 			"📞 Телефон: %s\n\n"+
 			"💰Сумма: %s\n\n"+
 			"Выберите действие ниже:",
-		order.ERPNumber,
+		titleMessage,
 		scheduled,
 		order.Problem.Name,
 		order.Address,

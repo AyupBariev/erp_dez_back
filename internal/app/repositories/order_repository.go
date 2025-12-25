@@ -21,8 +21,7 @@ func NewOrderRepository(db *gorm.DB) *OrderRepository {
 func (r *OrderRepository) GetOrders(date *string) ([]*models.Order, error) {
 	var orders []*models.Order
 
-	query := withOrderPreloads(r.db.Model(&models.Order{}))
-
+	query := r.withPreloads().Model(&models.Order{})
 	if date != nil && *date != "" {
 		query = query.Where("DATE(scheduled_at) = ?", *date)
 	}
@@ -42,17 +41,17 @@ func (r *OrderRepository) GetNextERPNumber() (int64, error) {
 }
 
 // Создание нового заказа
-func (r *OrderRepository) Create(order *models.Order) error {
+func (r *OrderRepository) Create(order *models.Order) (*models.Order, error) {
 	if err := r.db.Create(order).Error; err != nil {
-		return fmt.Errorf("failed to create order: %w", err)
+		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
-	return nil
+	return order, nil
 }
 
 // Получение заказа по первичному ключу
 func (r *OrderRepository) GetOrderByID(orderID int64) (*models.Order, error) {
 	var order models.Order
-	err := withOrderPreloads(r.db).
+	err := r.withPreloads().
 		Where("id = ?", orderID).
 		First(&order).Error
 
@@ -65,7 +64,7 @@ func (r *OrderRepository) GetOrderByID(orderID int64) (*models.Order, error) {
 // Получение заказа по ERP номеру
 func (r *OrderRepository) GetOrderByErpNumber(erpNumber int64) (*models.Order, error) {
 	var order models.Order
-	err := withOrderPreloads(r.db).
+	err := r.withPreloads().
 		Where("erp_number = ?", erpNumber).
 		First(&order).Error
 
@@ -77,7 +76,7 @@ func (r *OrderRepository) GetOrderByErpNumber(erpNumber int64) (*models.Order, e
 
 func (r *OrderRepository) GetByRepeatID(id uint) (*models.Order, error) {
 	var order models.Order
-	err := withOrderPreloads(r.db).
+	err := r.withPreloads().
 		Where("repeat_id = ?", id).
 		First(&order).Error
 
@@ -106,7 +105,7 @@ func (r *OrderRepository) GetTodayOrders(chatID int64) ([]models.Order, error) {
 	startOfDayUTC := startOfDayLocal.UTC()
 	endOfDayUTC := startOfDayUTC.Add(24 * time.Hour)
 
-	err := withOrderPreloads(r.db).
+	err := r.withPreloads().
 		Joins("JOIN engineers e ON e.id = orders.engineer_id").
 		Where(`
             e.telegram_id = ?
@@ -123,7 +122,7 @@ func (r *OrderRepository) GetTodayOrders(chatID int64) ([]models.Order, error) {
 func (r *OrderRepository) GetRepeatOrders(chatID int64) ([]models.Order, error) {
 	var orders []models.Order
 
-	err := withOrderPreloads(r.db).
+	err := r.withPreloads().
 		Joins("JOIN engineers e ON e.id = orders.engineer_id").
 		Where("e.telegram_id = ? AND repeat_id is NOT NULL AND status = 'working'", chatID).
 		Find(&orders).Error
@@ -135,7 +134,7 @@ func (r *OrderRepository) GetRepeatOrders(chatID int64) ([]models.Order, error) 
 func (r *OrderRepository) GetCashOrders(chatID int64) ([]models.Order, error) {
 	var orders []models.Order
 
-	err := withOrderPreloads(r.db).
+	err := r.withPreloads().
 		Joins("JOIN engineers e ON e.id = orders.engineer_id").
 		Where("e.telegram_id = ? AND status = 'sent_to_cash'", chatID).
 		Find(&orders).Error
@@ -157,15 +156,22 @@ func (r *OrderRepository) UpdateOrder(order *models.Order, fields ...string) err
 }
 
 // --- вспомогательная функция ---
-func withOrderPreloads(db *gorm.DB) *gorm.DB {
-	return db.
+func (r *OrderRepository) withPreloads() *gorm.DB {
+	return r.db.
 		Preload("Engineer").
-		Preload("Aggregator", func(db *gorm.DB) *gorm.DB {
-			return db.Table("aggregators")
-		}).
-		Preload("Problem", func(db *gorm.DB) *gorm.DB {
-			return db.Table("problems")
-		})
+		Preload("Aggregator").
+		Preload("Problem").
+		Preload("ParentOrder")
+}
+
+func (r *OrderRepository) LoadRelations(order *models.Order) error {
+	if order == nil {
+		return nil
+	}
+
+	return r.withPreloads().
+		First(order, order.ID).
+		Error
 }
 
 func (r *OrderRepository) Delete(erpNumber int64) error {

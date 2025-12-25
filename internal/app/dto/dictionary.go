@@ -1,4 +1,4 @@
-package models
+package dto
 
 // BaseDictionary - базовая модель словаря
 type BaseDictionary struct {

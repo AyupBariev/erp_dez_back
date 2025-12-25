@@ -1,4 +1,4 @@
-package models
+package dto
 
 // EngineerMotivationView используется только для выборки объединённых данных
 // из таблиц engineers и engineer_monthly_motivations.

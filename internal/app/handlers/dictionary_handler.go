@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"erp/internal/app/models"
+	"erp/internal/app/dto"
 	"erp/internal/app/services"
 	"net/http"
 	"strconv"
@@ -73,7 +73,7 @@ func (h *DictionaryHandler) getDictionaryItem(tableName string, c *gin.Context) 
 
 // POST /dictionaries/:type
 func (h *DictionaryHandler) createDictionaryItem(tableName string, c *gin.Context) {
-	var req models.CreateDictionaryRequest
+	var req dto.CreateDictionaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -96,7 +96,7 @@ func (h *DictionaryHandler) updateDictionaryItem(tableName string, c *gin.Contex
 		return
 	}
 
-	var req models.UpdateDictionaryRequest
+	var req dto.UpdateDictionaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

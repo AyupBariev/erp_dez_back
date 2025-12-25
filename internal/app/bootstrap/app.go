@@ -63,9 +63,10 @@ func NewApp() *App {
 	engineerRepo := repositories.NewEngineerRepository(sqlDB)
 	callRepo := repositories.NewCallRepository(sqlDB)
 	dictRepo := repositories.NewDictionaryRepository(sqlDB)
-	reportRepo := repositories.NewReportRepository(sqlDB)
 
+	reportRepo := repositories.NewReportRepository(gormDB)
 	orderRepo := repositories.NewOrderRepository(gormDB)
+	repeatRequestRepo := repositories.NewRepeatRequestRepository(gormDB)
 	motivationRepo := repositories.NewMotivationRepository(gormDB)
 	engineerTargetRepo := repositories.NewEngineerTargetRepository(gormDB)
 	engineerMotivationRepo := repositories.NewEngineerMotivationRepository(gormDB)
@@ -81,7 +82,14 @@ func NewApp() *App {
 
 	orderService := services.NewOrderService(orderRepo, notificationService, engineerService)
 	dictService := services.NewDictionaryService(dictRepo)
-	reportService := services.NewReportService(reportRepo, orderRepo, gormDB)
+	repeatRequestService := services.NewRepeatRequestService(repeatRequestRepo, orderService)
+
+	reportService := services.NewReportService(
+		reportRepo,
+		orderRepo,
+		repeatRequestService,
+		gormDB,
+	)
 
 	motivationService := services.NewMotivationService(motivationRepo)
 	egineerTargetService := services.NewEngineerTargetService(engineerTargetRepo)
@@ -98,7 +106,18 @@ func NewApp() *App {
 	}
 	defer cleanup()
 
-	handlers := NewHandlers(bot, userService, engineerService, orderService, authService, dictService, reportService, motivationService, egineerTargetService, engineerMotivationService, aggPayoutHandler)
+	handlers := NewHandlers(bot,
+		userService,
+		engineerService,
+		orderService,
+		authService,
+		dictService,
+		reportService,
+		repeatRequestService,
+		motivationService,
+		egineerTargetService,
+		engineerMotivationService,
+		aggPayoutHandler)
 	httpServer := SetupRouter(handlers)
 
 	return &App{

@@ -16,8 +16,17 @@ func NewEngineerMotivationHandler(service *services.EngineerMotivationService) *
 }
 
 func (h *EngineerMotivationHandler) GetMonthlyMotivation(c *gin.Context) {
-	month := c.Query("month") // yyyy-mm
-	result, err := h.service.GetMonthlyMotivation(month)
+	// Получаем параметры диапазона
+	fromStr := c.Query("from") // yyyy-mm-dd
+	toStr := c.Query("to")     // yyyy-mm-dd
+
+	// Валидация параметров
+	if fromStr == "" || toStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Параметры 'from' и 'to' обязательны"})
+		return
+	}
+
+	result, err := h.service.GetMotivationByDateRange(fromStr, toStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
